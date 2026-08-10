@@ -1,0 +1,28 @@
+{
+  "name": "los-cuatro-masters",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Los Cuatro Masters - golfresa Costa del Sol 11-13 september",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.1.0",
+    "@fontsource/oswald": "^5.1.0",
+    "@fontsource/space-mono": "^5.1.0",
+    "firebase": "^11.1.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "sharp": "^0.35.3",
+    "vite": "^6.0.7",
+    "vite-plugin-pwa": "^0.21.1"
+  }
+}

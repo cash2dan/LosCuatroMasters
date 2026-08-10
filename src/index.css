@@ -1,0 +1,32 @@
+/* Ram runt prototypens egna stilar — själva designen bor kvar i App.jsx. */
+
+html {
+  background: #0f3b2e;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0f3b2e;
+  color: #f3eedd;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  overscroll-behavior-y: none;
+}
+
+/* Standalone-läget lägger appen under notch och home indicator. */
+#root {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Sifferfälten i FreeInput ska inte ha spinnare på desktop. */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
