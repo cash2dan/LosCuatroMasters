@@ -5,12 +5,17 @@ service cloud.firestore {
 
     // Appen har ingen inloggning: fyra vänner delar tre dokument.
     // Reglerna låser därför ner ytan i stället för användaren — bara de
-    // tre rundorna finns, och bara med de fyra spelarfälten. Radering
-    // tillåts inte alls (create/update täcker allt appen gör).
+    // tre rundorna finns, och bara med de fyra spelarfälten plus
+    // ölmätarens 'beers'. Radering tillåts inte alls (create/update
+    // täcker allt appen gör).
     match /rounds/{roundId} {
 
       function isRound() {
         return roundId in ['fre', 'lor', 'son'];
+      }
+
+      function players() {
+        return ['jonsson', 'johansson', 'per', 'lars'];
       }
 
       function playerField(name) {
@@ -19,14 +24,33 @@ service cloud.firestore {
                    && request.resource.data[name].size() <= 18);
       }
 
+      // beers: { <spelare>: [ {hole, ts}, ... ] } — en lista per spelare,
+      // med samma tak som MAX_BEERS i src/data.js.
+      function beerField(name) {
+        return !(name in request.resource.data.beers)
+               || (request.resource.data.beers[name] is list
+                   && request.resource.data.beers[name].size() <= 40);
+      }
+
+      function beersOk() {
+        return !('beers' in request.resource.data)
+               || (request.resource.data.beers is map
+                   && request.resource.data.beers.keys().hasOnly(players())
+                   && beerField('jonsson')
+                   && beerField('johansson')
+                   && beerField('per')
+                   && beerField('lars'));
+      }
+
       allow read: if isRound();
 
       allow create, update: if isRound()
-        && request.resource.data.keys().hasOnly(['jonsson', 'johansson', 'per', 'lars'])
+        && request.resource.data.keys().hasOnly(['jonsson', 'johansson', 'per', 'lars', 'beers'])
         && playerField('jonsson')
         && playerField('johansson')
         && playerField('per')
-        && playerField('lars');
+        && playerField('lars')
+        && beersOk();
 
       allow delete: if false;
 

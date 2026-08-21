@@ -32,7 +32,12 @@ export default defineConfig({
     react(),
     appIconLinks(BASE),
     VitePWA({
-      registerType: "autoUpdate",
+      /* "prompt" i stället för "autoUpdate": en ny version tar inte över
+         mitt i en scoreinmatning, utan lägger sig och väntar tills
+         uppdateringsbannern trycks. Registreringen görs för hand i
+         src/usePwaUpdate.js via virtual:pwa-register. */
+      registerType: "prompt",
+      injectRegister: false,
       /* Ikoner, splashskärmar och typsnitt ligger redan i dist och plockas
          upp av globPatterns nedan — includeAssets skulle bara dubblera dem. */
       manifest: {
@@ -62,7 +67,9 @@ export default defineConfig({
         navigateFallback: `${BASE}index.html`,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true,
+        /* Den väntande service workern hoppar fram först när användaren
+           trycker på bannern (SKIP_WAITING från usePwaUpdate). */
+        skipWaiting: false,
         /* Firestore-trafiken ska aldrig gå via service workern — den har
            egen offlinehantering och långlivade strömmande anslutningar. */
         navigateFallbackDenylist: [/^\/__/, /firestore\.googleapis\.com/],

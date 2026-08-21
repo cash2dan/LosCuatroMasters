@@ -6,10 +6,13 @@ deploy till GitHub Pages.
 
 - **Schema** — de tre rundorna med par, längd och bana
 - **Banguide** — hål för hål, par och meter för Santana och Aloha
-- **Spela** — snabbinmatning av slag, puttar, GIR och fairway
+- **Spela** — snabbinmatning av slag, puttar, GIR och fairway, plus
+  ölmätaren: ett tryck loggar en öl på hålet du står på
 - **Leaderboard** — bruttoscore totalt eller per dag
 - **Dream 18** — lägsta score per hålnummer från valfri dag
-- **Awards** — nio utmärkelser räknade på hela resan eller en dag
+- **Ölkurvan** — snitt över par per antal öl, en linje per spelare
+- **Awards** — tio utmärkelser räknade på hela resan eller en dag
+- **Regler** — vad varje utmärkelse mäter, i klartext
 
 Alla fyra ser samma scoring live. Appen fungerar utan täckning ute på
 banan och synkar när nätet är tillbaka.
@@ -37,6 +40,11 @@ npm run icons     # generera om ikoner och splashskärmar
 Service workern är avstängd i `npm run dev`. För att testa offline-läget:
 `npm run build && npm run preview`, ladda sidan en gång, stäng av servern
 och ladda om — appen ska komma upp ändå.
+
+Nya versioner tar inte över av sig själva. När en deploy hunnit ut laddas
+den hem i bakgrunden och en banner längst ner erbjuder *Ladda om* — så att
+ingen får sidan omladdad mitt i en scoreinmatning. Bannern går att avfärda
+och kommer tillbaka nästa gång appen startas.
 
 ---
 
@@ -71,9 +79,14 @@ skrivningar per dag.
 [`firestore.rules`](./firestore.rules). Klicka **Publish**.
 
 Reglerna tillåter läsning och skrivning på `/rounds/fre`, `/rounds/lor`
-och `/rounds/son` — men bara med fälten `jonsson`, `johansson`, `per` och
-`lars`, och bara som listor med högst 18 hål. Allt annat i databasen är
-stängt, och radering är inte tillåten alls.
+och `/rounds/son` — men bara med fälten `jonsson`, `johansson`, `per`,
+`lars` och `beers`. Spelarfälten måste vara listor med högst 18 hål, och
+`beers` en map med samma fyra spelare och högst 40 öl var. Allt annat i
+databasen är stängt, och radering är inte tillåten alls.
+
+> Uppdaterar du appen från en version utan ölmätare måste reglerna
+> klistras in på nytt — annars nekas skrivningarna och statusprickan
+> slår om till *Ej synkad*.
 
 Appen har ingen inloggning: vem som helst med adressen kan läsa och skriva
 scoren. Det är ett medvetet val för fyra kompisar på en golfresa — det
@@ -157,7 +170,8 @@ sparas per enhet och delas inte.
 Tre dokument i Firestore, ett per runda:
 
 ```
-/rounds/fre   { jonsson: [18 × {s, gir, fw, p}], johansson: [...], per: [...], lars: [...] }
+/rounds/fre   { jonsson: [18 × {s, gir, fw, p}], johansson: [...], per: [...], lars: [...],
+                beers: { jonsson: [{hole, ts}, ...], johansson: [...], per: [...], lars: [...] } }
 /rounds/lor   { ... }
 /rounds/son   { ... }
 ```
@@ -165,11 +179,17 @@ Tre dokument i Firestore, ett per runda:
 `s` = antal slag, `p` = puttar, `gir`/`fw` = träffad green respektive
 fairway. `null` betyder ej inrapporterat.
 
+`beers` är ölmätaren: en kronologisk lista per spelare med hålnumret ölen
+loggades på och en tidsstämpel. Ångra-knappen tar bort det sista
+elementet. Räkningen är per runda och nollställs mellan rundor, precis
+som scoren.
+
 - **Läsning:** en `onSnapshot`-lyssnare per dokument, tre totalt. Alla
   enheter ser varandras slag direkt.
 - **Skrivning:** ändringar samlas ihop och skickas ~1 sekund efter sista
   knapptryck, som en `setDoc(..., { merge: true })` per runda. Fyra snabba
-  tryck blir alltså en skrivning, inte fyra.
+  tryck blir alltså en skrivning, inte fyra. Kön är per runda och spelare,
+  och en skrivning tar med både hålen och ölen för de som ändrats.
 - **Optimistiskt:** ditt slag syns direkt i gränssnittet, synken sker i
   bakgrunden.
 - **Offline:** hela scoren speglas i `localStorage` tillsammans med en kö
@@ -187,9 +207,11 @@ Statusprickan under rubriken: grön *Synkad*, grå *Sparar…*, röd *Ej synkad*
 ## Filer
 
 ```
-src/data.js         Bandata, spelare, färger, typsnitt, scoremodell
+src/data.js         Bandata, spelare, färger, typsnitt, score- och ölmodell
 src/App.jsx         Hela gränssnittet och beräkningarna
+src/beer.js         Ölkurvans matematik: nivåer och viktad regression
 src/useScores.js    Firestore-synk, debounce, offlinekö, "vem är du"
+src/usePwaUpdate.js Service worker-registrering och uppdateringsnotis
 src/firebase.js     Firebase-init från .env
 firestore.rules     Säkerhetsregler att klistra in i konsolen
 scripts/            Generering av ikoner och splashskärmar

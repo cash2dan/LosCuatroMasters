@@ -106,3 +106,45 @@ export const normalizeScores = (data) => {
   for (const r of ROUNDS) o[r.id] = normalizeRound(data?.[r.id]);
   return o;
 };
+
+/* ---------- Ölmätare ---------- */
+
+/* Ett tak per spelare och runda: skyddar både dokumentstorleken och
+   grafen mot orimliga värden. Samma tak finns i firestore.rules. */
+export const MAX_BEERS = 40;
+
+export const blankBeers = () => {
+  const o = {};
+  for (const r of ROUNDS) {
+    o[r.id] = {};
+    for (const p of PLAYERS) o[r.id][p.id] = [];
+  }
+  return o;
+};
+
+/* En öl är { hole: 1–18, ts: ISO-sträng }. Listan är kronologisk i den
+   ordning ölen loggats — det är den ordningen ångra-knappen backar i. */
+export const normalizeBeerList = (arr) => {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const b of arr) {
+    if (!b || typeof b !== "object") continue;
+    const hole = num(b.hole);
+    if (hole == null || hole < 1 || hole > 18) continue;
+    out.push({ hole: Math.round(hole), ts: typeof b.ts === "string" ? b.ts : null });
+    if (out.length >= MAX_BEERS) break;
+  }
+  return out;
+};
+
+export const normalizeRoundBeers = (data) => {
+  const o = {};
+  for (const p of PLAYERS) o[p.id] = normalizeBeerList(data?.[p.id]);
+  return o;
+};
+
+export const normalizeBeers = (data) => {
+  const o = {};
+  for (const r of ROUNDS) o[r.id] = normalizeRoundBeers(data?.[r.id]);
+  return o;
+};

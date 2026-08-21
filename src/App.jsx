@@ -3,12 +3,15 @@ import {
   Trophy, Flag, Target, Circle, TrendingUp, Activity, Zap, Wind, Award,
   Plus, Minus, ChevronLeft, ChevronRight, Users, Calendar, MapPin, Star,
   Check, User, ExternalLink, ChevronDown, BookOpen, AlertTriangle,
+  Undo2, X, RefreshCw, Coffee,
 } from "lucide-react";
 
 import {
   C, FONT, DISPLAY, MONO, PLAYERS, ROUNDS,
 } from "./data";
 import { useScores, useMe } from "./useScores";
+import { usePwaUpdate } from "./usePwaUpdate";
+import { beerCurves, weightedSlope, beerLevels, slopeText } from "./beer";
 
 /* =========================================================
    LOS CUATRO MASTERS
@@ -23,8 +26,9 @@ export default function App() {
   const [tab, setTab] = useState("schema");
   const [roundId, setRoundId] = useState(ROUNDS[0].id);
   const [hole, setHole] = useState(0);
-  const { scores, set, sync, reset } = useScores();
+  const { scores, beers, set, addBeer, undoBeer, sync, reset } = useScores();
   const [me, chooseMe] = useMe();
+  const pwa = usePwaUpdate();
 
   const round = ROUNDS.find((r) => r.id === roundId);
 
@@ -58,12 +62,18 @@ export default function App() {
           round={round} roundId={roundId} setRoundId={setRoundId}
           hole={hole} setHole={setHole}
           scores={scores[roundId]} set={set} me={me} onPickMe={chooseMe}
+          beers={beers[roundId]}
+          onBeer={(pid) => addBeer(roundId, pid, hole + 1)}
+          onUndoBeer={(pid) => undoBeer(roundId, pid)}
         />
       )}
       {tab === "board" && <Leaderboard scores={scores} me={me} />}
       {tab === "dream" && <Dream18 scores={scores} me={me} />}
-      {tab === "awards" && <Awards scores={scores} />}
+      {tab === "ol" && <BeerCurve scores={scores} beers={beers} />}
+      {tab === "awards" && <Awards scores={scores} beers={beers} />}
       {tab === "regler" && <Rules />}
+
+      <UpdateBanner {...pwa} />
     </div>
   );
 }
@@ -105,27 +115,47 @@ const TABS = [
   { id: "spela", label: "Spela", icon: Flag },
   { id: "board", label: "Leaderboard", icon: Trophy },
   { id: "dream", label: "Dream 18", icon: Star },
+  { id: "ol", label: "Ölkurvan", emoji: "🍺" },
   { id: "awards", label: "Awards", icon: Award },
   { id: "regler", label: "Regler", icon: BookOpen },
 ];
 
 function Tabs({ tab, setTab }) {
+  const refs = useRef({});
+
+  /* Åtta flikar får inte plats på en mobilskärm. Raden scrollar i sidled
+     och den valda fliken dras alltid in i bild — annars kan man byta
+     till en flik som sedan ligger utanför kanten. */
+  useEffect(() => {
+    refs.current[tab]?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [tab]);
+
   return (
     <div style={{
       position: "sticky", top: 0, zIndex: 20, background: C.fairwayDark,
       borderBottom: `1px solid ${C.line}`, marginTop: 14,
     }}>
-      <div style={{ display: "flex", gap: 6, padding: "10px 12px", overflowX: "auto" }}>
+      <div style={{
+        display: "flex", gap: 6, padding: "10px 12px", overflowX: "auto",
+        WebkitOverflowScrolling: "touch", scrollbarWidth: "none",
+      }}>
         {TABS.map((t) => {
           const I = t.icon, on = tab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
-              padding: "9px 14px", borderRadius: 20, border: "none", cursor: "pointer",
-              background: on ? C.gold : "rgba(255,255,255,0.05)",
-              color: on ? C.fairwayDark : C.mutedGreen, fontSize: 12.5, fontWeight: 700,
-            }}>
-              <I size={14} strokeWidth={2.4} /> {t.label}
+            <button
+              key={t.id}
+              ref={(el) => { refs.current[t.id] = el; }}
+              onClick={() => setTab(t.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+                padding: "9px 14px", borderRadius: 20, border: "none", cursor: "pointer",
+                background: on ? C.gold : "rgba(255,255,255,0.05)",
+                color: on ? C.fairwayDark : C.mutedGreen, fontSize: 12.5, fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {I ? <I size={14} strokeWidth={2.4} /> : <span style={{ fontSize: 13, lineHeight: 1 }}>{t.emoji}</span>}
+              {t.label}
             </button>
           );
         })}
@@ -486,12 +516,23 @@ function Nine({ title, holes }) {
    SPELA — förenklad inmatning
    ========================================================= */
 
-function Play({ round, roundId, setRoundId, hole, setHole, scores, set, me, onPickMe }) {
+function Play({
+  round, roundId, setRoundId, hole, setHole, scores, set, me, onPickMe,
+  beers, onBeer, onUndoBeer,
+}) {
   const h = round.holes[hole];
   const ordered = useMemo(() => {
     if (!me) return PLAYERS;
     return [...PLAYERS].sort((a, b) => (a.id === me ? -1 : b.id === me ? 1 : 0));
   }, [me]);
+
+  /* Bara Aloha har halvvägshus — Santana spelas i ett svep. */
+  const [showHalfway, closeHalfway] = useHalfwayNotice(
+    roundId,
+    round.short_course === "Aloha",
+    me ? scores[me][7].s : null,
+    hole
+  );
 
   if (!me) {
     return (
@@ -549,6 +590,8 @@ function Play({ round, roundId, setRoundId, hole, setHole, scores, set, me, onPi
         Hålkarta hos {round.short_course} <ExternalLink size={11} />
       </a>
 
+      {showHalfway && <HalfwayNote onClose={closeHalfway} />}
+
       {ordered.map((p) => (
         <Card
           key={p.id}
@@ -558,8 +601,71 @@ function Play({ round, roundId, setRoundId, hole, setHole, scores, set, me, onPi
           par={h.par}
           onSet={(f, v) => set(roundId, p.id, hole, f, v)}
           onDone={() => hole < 17 && setHole(hole + 1)}
+          beers={beers[p.id]}
+          onBeer={() => onBeer(p.id)}
+          onUndoBeer={() => onUndoBeer(p.id)}
         />
       ))}
+    </div>
+  );
+}
+
+const clock = (ts) => {
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+};
+
+/* =========================================================
+   HALVVÄGSNOTIS
+
+   Aloha har halvvägshus efter hål 9, Santana inte. Notisen dyker upp
+   när den inloggade spelaren fyllt i hål 8 — hålet är avklarat och
+   pausen ligger runt hörnet. Visas en gång per runda och enhet.
+   ========================================================= */
+
+const HALFWAY_KEY = "loscuatro-halfway-v1";
+
+function useHalfwayNotice(roundId, active, hole8, hole) {
+  const [showFor, setShowFor] = useState(null);
+
+  useEffect(() => {
+    if (!active || hole8 == null) return;
+    /* Bara i själva ögonblicket runt hål 9 — inte när man bläddrar
+       tillbaka i en färdigspelad runda. */
+    if (hole < 7 || hole > 8) return;
+
+    let seen;
+    try { seen = JSON.parse(localStorage.getItem(HALFWAY_KEY) || "[]"); } catch { seen = []; }
+    if (!Array.isArray(seen)) seen = [];
+    if (seen.includes(roundId)) return;
+
+    try { localStorage.setItem(HALFWAY_KEY, JSON.stringify([...seen, roundId])); } catch { /* privat läge */ }
+    setShowFor(roundId);
+  }, [roundId, active, hole8, hole]);
+
+  return [showFor === roundId, () => setShowFor(null)];
+}
+
+function HalfwayNote({ onClose }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10, marginBottom: 12,
+      background: "rgba(255,255,255,0.05)", border: `1px solid ${C.line}`,
+      borderRadius: 12, padding: "10px 12px",
+    }}>
+      <Coffee size={15} color={C.goldBright} strokeWidth={2.3} style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, fontSize: 11.5, color: C.mutedGreen, lineHeight: 1.5 }}>
+        Halvvägshuset ligger efter hål 9.
+      </div>
+      <button onClick={onClose} aria-label="Stäng" style={{
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        width: 26, height: 26, borderRadius: 8, border: "none", cursor: "pointer",
+        background: "rgba(255,255,255,0.07)", color: C.mutedGreen,
+      }}>
+        <X size={13} strokeWidth={2.6} />
+      </button>
     </div>
   );
 }
@@ -587,7 +693,7 @@ function scoreLabel(d) {
   return `+${d}`;
 }
 
-function Card({ player, isMe, st, par, onSet, onDone }) {
+function Card({ player, isMe, st, par, onSet, onDone, beers, onBeer, onUndoBeer }) {
   const [expanded, setExpanded] = useState(isMe);
   const [free, setFree] = useState(null);
   const quick = [par - 1, par, par + 1, par + 2];
@@ -699,6 +805,9 @@ function Card({ player, isMe, st, par, onSet, onDone }) {
               : <div style={{ flex: 1 }} />}
           </div>
 
+          {/* Öl */}
+          <BeerRow list={beers} onAdd={onBeer} onUndo={onUndoBeer} />
+
           {isMe && st.s != null && (
             <button onClick={onDone} style={{
               width: "100%", marginTop: 11, padding: "11px 0", borderRadius: 10, border: "none",
@@ -709,6 +818,70 @@ function Card({ player, isMe, st, par, onSet, onDone }) {
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   ÖLRADEN
+
+   Sitter i spelarkortet under GIR/Fairway och gäller kortets
+   spelare — inte den inloggade. Öl loggas alltså åt en kompis
+   på samma sätt som slag och puttar. Ett tryck loggar en öl på
+   det hål man står på; flera tryck på samma hål är tillåtet.
+   ========================================================= */
+
+function BeerRow({ list, onAdd, onUndo }) {
+  const [flash, setFlash] = useState(false);
+  const timer = useRef(null);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const last = list.length ? list[list.length - 1] : null;
+  const time = last?.ts ? clock(last.ts) : null;
+
+  const add = () => {
+    onAdd();
+    setFlash(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFlash(false), 1000);
+  };
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 6,
+      margin: "9px -5px 0", padding: "4px 5px", borderRadius: 10,
+      background: flash ? "rgba(228,193,61,0.38)" : "transparent",
+      transition: "background .3s ease",
+    }}>
+      <span style={{
+        fontSize: 10.5, fontWeight: 800, color: C.muted, textTransform: "uppercase",
+        letterSpacing: "0.07em", width: 46, flexShrink: 0,
+      }}>
+        Öl
+      </span>
+
+      <button onClick={add} style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0,
+        background: C.goldBright, color: C.fairwayDark, border: "none", borderRadius: 9,
+        padding: "9px 13px", fontFamily: MONO, fontSize: 13, fontWeight: 700, cursor: "pointer",
+      }}>
+        <span style={{ fontSize: 15, lineHeight: 1 }}>🍺</span> {list.length}
+      </button>
+
+      <span style={{ flex: 1, minWidth: 0, fontSize: 10.5, color: C.muted }}>
+        {last ? `Senast hål ${last.hole}${time ? ` · ${time}` : ""}` : ""}
+      </span>
+
+      {list.length > 0 && (
+        <button onClick={onUndo} style={{
+          display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+          background: C.paperDark, color: C.muted, border: "none", borderRadius: 9,
+          padding: "8px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer",
+        }}>
+          <Undo2 size={12} strokeWidth={2.4} /> Ångra
+        </button>
       )}
     </div>
   );
@@ -1029,7 +1202,7 @@ function Dream18({ scores, me }) {
    AWARDS
    ========================================================= */
 
-function computeAwards(rounds, scores) {
+function computeAwards(rounds, scores, beers) {
   const stats = PLAYERS.map((p) => {
     let comeback = -Infinity, diffs = [], clutchSum = 0, clutchN = 0;
     let gir = 0, fw = 0, putts = 0, puttHoles = 0;
@@ -1074,6 +1247,11 @@ function computeAwards(rounds, scores) {
       birdies += played.filter((h) => h.s - h.par <= -1).length;
     });
 
+    /* The Optimizer: trendlinjen genom (ölnivå, snitt över par), viktad
+       med antal hål per nivå. Kräver spel på minst tre olika nivåer. */
+    const levels = beerLevels(rounds, scores, beers, p.id);
+    const slope = weightedSlope(levels);
+
     let consistency = null;
     if (diffs.length >= 3) {
       const m = diffs.reduce((a, b) => a + b, 0) / diffs.length;
@@ -1085,6 +1263,8 @@ function computeAwards(rounds, scores) {
       clutch: clutchN ? clutchSum / clutchN : null,
       gir, fw, putts: puttHoles ? putts : null, puttHoles,
       scr, scrOpp, streak, birdies,
+      optimizer: levels.length >= 3 ? slope : null,
+      beerLevels: levels.length,
     };
   });
 
@@ -1104,6 +1284,7 @@ function computeAwards(rounds, scores) {
     scr: pick("scr", "max", (s) => s.scr > 0),
     streak: pick("streak", "max", (s) => s.streak > 0),
     birdies: pick("birdies", "max", (s) => s.birdies > 0),
+    optimizer: pick("optimizer", "min"),
   };
 }
 
@@ -1117,12 +1298,13 @@ const AWARDS = [
   { k: "scr", t: "Houdini", i: Users, d: "Flest räddade par", v: (s) => `${s.scr} av ${s.scrOpp}` },
   { k: "streak", t: "Streak Master", i: Flag, d: "Flest hål i rad utan dubbel+", v: (s) => `${s.streak} hål` },
   { k: "birdies", t: "Birdie Machine", i: Trophy, d: "Flest birdies eller bättre", v: (s) => `${s.birdies} st` },
+  { k: "optimizer", t: "The Optimizer", i: Star, d: "Bäst trend per öl", v: (s) => slopeText(s.optimizer) },
 ];
 
-function Awards({ scores }) {
+function Awards({ scores, beers }) {
   const [view, setView] = useState("all");
   const rounds = view === "all" ? ROUNDS : ROUNDS.filter((r) => r.id === view);
-  const res = useMemo(() => computeAwards(rounds, scores), [rounds, scores]);
+  const res = useMemo(() => computeAwards(rounds, scores, beers), [rounds, scores, beers]);
   const live = rounds.some((r) => Object.values(scores[r.id]).some((hs) => hs.some((h) => h.s != null)));
 
   return (
@@ -1211,19 +1393,23 @@ const RULES = [
     t: "Birdie Machine", i: Trophy, d: "Flest birdies eller bättre",
     x: "Flest hål på birdie eller bättre. Eagle och albatross räknas som ett hål var, inte extra — den här handlar om antal, inte om djup. Rakt och enkelt: flest hål under par tar den.",
   },
+  {
+    t: "The Optimizer", i: Star, d: "Bäst trend per öl",
+    x: "Vem påverkas mest positivt av öl — eller minst negativt? Appen räknar ut ditt snitt över par vid varje öl-nivå och drar en trendlinje genom punkterna, viktad efter antal spelade hål per nivå. Kräver spel på minst tre öl-nivåer.",
+  },
 ];
 
 function Rules() {
   return (
     <div style={{ padding: "20px 16px 60px" }}>
-      <Head icon={BookOpen} title="Regler" sub="Så räknas de nio utmärkelserna" />
+      <Head icon={BookOpen} title="Regler" sub="Så räknas de tio utmärkelserna" />
 
       <div style={{
         background: "rgba(255,255,255,0.05)", border: `1px solid ${C.line}`,
         borderRadius: 12, padding: 14, marginBottom: 16,
       }}>
         <div style={{ fontSize: 12.5, color: C.paper, lineHeight: 1.6 }}>
-          Alla nio utmärkelser är positiva. Det finns ingen sämst-kategori.
+          Alla tio utmärkelser är positiva. Det finns ingen sämst-kategori.
         </div>
         <div style={{ fontSize: 11.5, color: C.mutedGreen, lineHeight: 1.6, marginTop: 9 }}>
           Leaderboarden är rak bruttoscore, slag för slag. Awards fångar upp allt
@@ -1263,6 +1449,214 @@ function Rules() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   ÖLKURVAN
+   ========================================================= */
+
+const BeerIcon = () => <span style={{ fontSize: 17, lineHeight: 1 }}>🍺</span>;
+
+/* Färg på trenden: nedåt är bra, uppåt är dyrt, platt är platt. */
+const slopeColor = (slope, flat = C.muted) =>
+  slope == null || Math.abs(slope) < 0.005 ? flat : slope < 0 ? C.green : C.clay;
+
+function BeerCurve({ scores, beers }) {
+  const [view, setView] = useState("all");
+  const rounds = view === "all" ? ROUNDS : ROUNDS.filter((r) => r.id === view);
+
+  const curves = useMemo(() => beerCurves(rounds, scores, beers), [rounds, scores, beers]);
+  const played = curves.filter((c) => c.holes > 0);
+
+  /* Bäst först: mest negativ lutning vinner, spelare utan trendlinje sist. */
+  const trend = [...played].sort((a, b) => {
+    if (a.slope == null && b.slope == null) return 0;
+    if (a.slope == null) return 1;
+    if (b.slope == null) return -1;
+    return a.slope - b.slope;
+  });
+
+  return (
+    <div style={{ padding: "20px 16px 60px" }}>
+      <Head icon={BeerIcon} title="Ölkurvan" sub="Snitt över par per antal öl" />
+      <DayPills value={view} onChange={setView} includeAll />
+
+      {!played.length && (
+        <Empty text="Spela några hål och logga öl under Spela så ritas kurvan upp." />
+      )}
+
+      {played.length > 0 && (
+        <>
+          <BeerChart curves={played} />
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 11, justifyContent: "center" }}>
+            {played.map((c) => (
+              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: c.color }} />
+                <span style={{ fontSize: 11.5, color: C.paper, fontWeight: 600 }}>{c.name}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 10.5, color: C.dim, lineHeight: 1.55, marginTop: 10, textAlign: "center" }}>
+            Punktens storlek visar hur många hål som spelats på den nivån.
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 18 }}>
+            {trend.map((c) => (
+              <div key={c.id} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                background: C.paper, borderRadius: 12, padding: "11px 13px",
+              }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13.5, color: C.ink }}>{c.name}</div>
+                  <div style={{ fontSize: 10.5, color: C.muted, marginTop: 1 }}>
+                    {c.holes} hål · {c.points.length} ölnivå{c.points.length === 1 ? "" : "er"}
+                  </div>
+                </div>
+                <div style={{
+                  fontFamily: MONO, fontSize: 11, fontWeight: 700, textAlign: "right",
+                  color: slopeColor(c.slope),
+                }}>
+                  {c.slope == null ? "—" : slopeText(c.slope)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* Axeltext för snitt över par: +1,5 / 0,0 / -0,8. */
+const axisTick = (v) => {
+  if (Math.abs(v) < 0.05) return "0,0";
+  return (v > 0 ? "+" : "") + v.toFixed(1).replace(".", ",");
+};
+
+function BeerChart({ curves }) {
+  const W = 340, H = 210, L = 36, R = 12, T = 14, B = 32;
+
+  const pts = curves.flatMap((c) => c.points);
+  const maxLevel = Math.max(1, ...pts.map((p) => p.level));
+  const maxHoles = Math.max(1, ...pts.map((p) => p.holes));
+
+  /* Y-axeln spänner över det som faktiskt spelats, med lite luft runt —
+     annars klistrar sig punkterna i kanten när alla ligger nära varandra. */
+  let lo = Math.min(...pts.map((p) => p.avg));
+  let hi = Math.max(...pts.map((p) => p.avg));
+  if (hi - lo < 1) { const m = (lo + hi) / 2; lo = m - 0.5; hi = m + 0.5; }
+  const air = (hi - lo) * 0.18;
+  lo -= air; hi += air;
+
+  const x = (lvl) => L + (lvl / maxLevel) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+
+  const yTicks = [0, 1, 2, 3].map((i) => lo + ((hi - lo) * i) / 3);
+  const xTicks = [];
+  for (let i = 0; i <= maxLevel; i += maxLevel > 8 ? 2 : 1) xTicks.push(i);
+
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.035)", border: `1px solid ${C.line}`,
+      borderRadius: 14, padding: "11px 10px 7px",
+    }}>
+      <div style={{
+        fontSize: 9.5, color: C.dim, textTransform: "uppercase",
+        letterSpacing: "0.09em", fontWeight: 800, marginBottom: 3, paddingLeft: 3,
+      }}>
+        Snitt över par
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        {yTicks.map((v, i) => (
+          <g key={`y${i}`}>
+            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke={C.line} strokeWidth="1" />
+            <text x={L - 6} y={y(v) + 3.4} textAnchor="end" fill={C.dim} fontSize="9" fontFamily={MONO}>
+              {axisTick(v)}
+            </text>
+          </g>
+        ))}
+
+        {/* Par-linjen, när den ligger inom bild. */}
+        {lo < 0 && hi > 0 && (
+          <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="rgba(243,238,221,0.4)" strokeWidth="1" strokeDasharray="3 3" />
+        )}
+
+        {xTicks.map((v) => (
+          <text key={`x${v}`} x={x(v)} y={H - 13} textAnchor="middle" fill={C.dim} fontSize="9" fontFamily={MONO}>
+            {v}
+          </text>
+        ))}
+        <text
+          x={(L + W - R) / 2} y={H - 2} textAnchor="middle" fill={C.dim}
+          fontSize="8.5" fontWeight="700" letterSpacing="1.2"
+        >
+          ANTAL ÖL
+        </text>
+
+        {curves.map((c) => (
+          c.points.length > 1 ? (
+            <polyline
+              key={`l${c.id}`} fill="none" stroke={c.color} strokeWidth="2"
+              strokeLinejoin="round" strokeLinecap="round" opacity="0.9"
+              points={c.points.map((p) => `${x(p.level)},${y(p.avg)}`).join(" ")}
+            />
+          ) : null
+        ))}
+
+        {/* Radien skalar med antalet hål bakom nivån — viktningen syns. */}
+        {curves.map((c) => c.points.map((p) => (
+          <circle
+            key={`p${c.id}-${p.level}`}
+            cx={x(p.level)} cy={y(p.avg)} r={3 + 5 * Math.sqrt(p.holes / maxHoles)}
+            fill={c.color} fillOpacity="0.85" stroke={C.fairwayDark} strokeWidth="1"
+          />
+        )))}
+      </svg>
+    </div>
+  );
+}
+
+/* =========================================================
+   UPPDATERINGSNOTIS
+   ========================================================= */
+
+function UpdateBanner({ ready, update, dismiss }) {
+  if (!ready) return null;
+
+  return (
+    <div style={{
+      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 40,
+      display: "flex", alignItems: "center", gap: 10,
+      background: C.fairwayDark, borderTop: `1px solid ${C.line}`,
+      padding: "11px 12px calc(11px + env(safe-area-inset-bottom))",
+      boxShadow: "0 -8px 22px rgba(0,0,0,0.35)",
+    }}>
+      <RefreshCw size={15} color={C.goldBright} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.paper }}>Ny version tillgänglig</div>
+        <div style={{ fontSize: 10.5, color: C.mutedGreen, marginTop: 1 }}>
+          Allt inmatat är sparat — ladda om när det passar.
+        </div>
+      </div>
+      <button onClick={update} style={{
+        flexShrink: 0, background: C.gold, color: C.fairwayDark, border: "none",
+        borderRadius: 9, padding: "10px 13px", fontSize: 12, fontWeight: 800, cursor: "pointer",
+      }}>
+        Ladda om
+      </button>
+      <button onClick={dismiss} aria-label="Stäng" style={{
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.line}`,
+        background: "rgba(255,255,255,0.05)", color: C.mutedGreen, cursor: "pointer",
+      }}>
+        <X size={14} strokeWidth={2.6} />
+      </button>
     </div>
   );
 }

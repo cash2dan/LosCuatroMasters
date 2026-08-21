@@ -1,16 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { doc, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
 import { db, firebaseEnabled } from "./firebase";
-import { PLAYERS, ROUNDS, blankScores, normalizeHoles, normalizeScores } from "./data";
+import {
+  PLAYERS, ROUNDS, MAX_BEERS,
+  blankScores, normalizeHoles, normalizeScores,
+  blankBeers, normalizeBeerList, normalizeBeers,
+} from "./data";
 
 /* =========================================================
    SYNK
 
    Datamodell i Firestore: tre dokument, ett per runda.
 
-     /rounds/fre  { jonsson: [18 × {s,gir,fw,p}], johansson: [...], ... }
+     /rounds/fre  { jonsson: [18 × {s,gir,fw,p}], johansson: [...], ...,
+                    beers: { jonsson: [{hole,ts}, ...], ... } }
      /rounds/lor  { ... }
      /rounds/son  { ... }
+
+   Ölmätaren ligger alltså i samma dokument som scoren och följer samma
+   väg: optimistisk uppdatering, samma debounce och samma offlinekö.
+   Kön är per (runda, spelare) — en skrivning tar med både hålen och
+   ölen för de spelare som ändrats.
 
    Tre onSnapshot-lyssnare ger live-uppdatering för hela sällskapet.
    Skrivningar samlas ihop och skickas ~1 s efter sista knapptryck,
@@ -23,6 +33,7 @@ import { PLAYERS, ROUNDS, blankScores, normalizeHoles, normalizeScores } from ".
    ========================================================= */
 
 const CACHE_KEY = "loscuatro-scores-cache-v1";
+const BEER_KEY = "loscuatro-beers-cache-v1";
 const QUEUE_KEY = "loscuatro-queue-v1";
 const ME_KEY = "loscuatro-me-v1";
 
@@ -42,11 +53,17 @@ export function useScores() {
     const cached = read(CACHE_KEY);
     return cached ? normalizeScores(cached) : blankScores();
   });
+  const [beers, setBeers] = useState(() => {
+    const cached = read(BEER_KEY);
+    return cached ? normalizeBeers(cached) : blankBeers();
+  });
   const [sync, setSync] = useState(firebaseEnabled ? "loading" : "ok");
 
   /* Alltid färskaste värdena, utan att binda om callbacks. */
   const scoresRef = useRef(scores);
   scoresRef.current = scores;
+  const beersRef = useRef(beers);
+  beersRef.current = beers;
 
   /* Kön av osynkade ändringar: { [roundId]: { [playerId]: seq } }.
      Sekvensnumret gör att en skrivning bara plockar bort det den
@@ -99,8 +116,11 @@ export function useScores() {
     await Promise.all(
       rids.map(async (rid) => {
         const sent = { ...queueRef.current[rid] };
-        const payload = {};
-        for (const pid of Object.keys(sent)) payload[pid] = scoresRef.current[rid][pid];
+        const payload = { beers: {} };
+        for (const pid of Object.keys(sent)) {
+          payload[pid] = scoresRef.current[rid][pid];
+          payload.beers[pid] = beersRef.current[rid][pid];
+        }
 
         try {
           await setDoc(doc(db, "rounds", rid), payload, { merge: true });
@@ -136,6 +156,19 @@ export function useScores() {
 
   /* ---------- optimistisk uppdatering ---------- */
 
+  /* Markerar (runda, spelare) som osynkad och startar debouncen.
+     Både score och öl går genom samma kö — en skrivning tar med båda. */
+  const touch = useCallback((rid, pid) => {
+    queueRef.current[rid] = queueRef.current[rid] || {};
+    queueRef.current[rid][pid] = ++seqRef.current;
+    persistQueue();
+
+    if (firebaseEnabled) {
+      setSync("saving");
+      schedule();
+    }
+  }, [persistQueue, schedule]);
+
   const set = useCallback((rid, pid, hi, field, val) => {
     setScores((prev) => {
       const next = {
@@ -150,15 +183,34 @@ export function useScores() {
       return next;
     });
 
-    queueRef.current[rid] = queueRef.current[rid] || {};
-    queueRef.current[rid][pid] = ++seqRef.current;
-    persistQueue();
+    touch(rid, pid);
+  }, [touch]);
 
-    if (firebaseEnabled) {
-      setSync("saving");
-      schedule();
-    }
-  }, [persistQueue, schedule]);
+  /* ---------- ölmätare ---------- */
+
+  const writeBeers = useCallback((rid, pid, next) => {
+    setBeers((prev) => {
+      const all = { ...prev, [rid]: { ...prev[rid], [pid]: next } };
+      beersRef.current = all;
+      write(BEER_KEY, all);
+      return all;
+    });
+    touch(rid, pid);
+  }, [touch]);
+
+  const addBeer = useCallback((rid, pid, holeNo) => {
+    const cur = beersRef.current[rid][pid];
+    if (cur.length >= MAX_BEERS) return;
+    writeBeers(rid, pid, [...cur, { hole: holeNo, ts: new Date().toISOString() }]);
+  }, [writeBeers]);
+
+  /* Ångra tar bort den senast loggade ölen, inte den på det hål man
+     råkar stå på — listan är kronologisk. */
+  const undoBeer = useCallback((rid, pid) => {
+    const cur = beersRef.current[rid][pid];
+    if (!cur.length) return;
+    writeBeers(rid, pid, cur.slice(0, -1));
+  }, [writeBeers]);
 
   /* ---------- nollställning ---------- */
 
@@ -167,6 +219,7 @@ export function useScores() {
      inte förrän servern bekräftat; kastar felet vidare till anroparen. */
   const reset = useCallback(async () => {
     const cleared = blankScores();
+    const clearedBeers = blankBeers();
 
     resettingRef.current = true;
     clearTimeout(timerRef.current);
@@ -176,7 +229,9 @@ export function useScores() {
       if (firebaseEnabled) {
         setSync("saving");
         const batch = writeBatch(db);
-        for (const r of ROUNDS) batch.set(doc(db, "rounds", r.id), cleared[r.id]);
+        for (const r of ROUNDS) {
+          batch.set(doc(db, "rounds", r.id), { ...cleared[r.id], beers: clearedBeers[r.id] });
+        }
         await batch.commit();
       }
     } catch (err) {
@@ -192,6 +247,9 @@ export function useScores() {
     scoresRef.current = cleared;
     setScores(cleared);
     write(CACHE_KEY, cleared);
+    beersRef.current = clearedBeers;
+    setBeers(clearedBeers);
+    write(BEER_KEY, clearedBeers);
     setSync("ok");
   }, [persistQueue]);
 
@@ -236,6 +294,24 @@ export function useScores() {
             return next;
           });
 
+          setBeers((prev) => {
+            const nextRound = { ...prev[r.id] };
+            let changed = false;
+            for (const p of PLAYERS) {
+              if (isQueued(r.id, p.id)) continue;
+              const incoming = normalizeBeerList(remote.beers?.[p.id]);
+              if (JSON.stringify(incoming) !== JSON.stringify(prev[r.id][p.id])) {
+                nextRound[p.id] = incoming;
+                changed = true;
+              }
+            }
+            if (!changed) return prev;
+            const next = { ...prev, [r.id]: nextRound };
+            beersRef.current = next;
+            write(BEER_KEY, next);
+            return next;
+          });
+
           if (first > 0 && --first === 0) {
             setSync(queueSize() > 0 ? "saving" : "ok");
             if (queueSize() > 0) schedule();
@@ -275,7 +351,7 @@ export function useScores() {
     };
   }, [flush, queueSize]);
 
-  return { scores, set, sync, reset };
+  return { scores, beers, set, addBeer, undoBeer, sync, reset };
 }
 
 /* =========================================================
