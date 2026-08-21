@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 
 import {
-  C, FONT, DISPLAY, MONO, PLAYERS, ROUNDS,
+  C, FONT, DISPLAY, MONO, PLAYERS, ROUNDS, MASTERS, PORTRAITS,
 } from "./data";
 import { useScores, useMe } from "./useScores";
 import { usePwaUpdate } from "./usePwaUpdate";
@@ -32,6 +32,10 @@ export default function App() {
 
   const round = ROUNDS.find((r) => r.id === roundId);
 
+  /* "masters" finns inte i TABS — sidan nås bara från Schema och tar
+     över hela vyn, utan masthead och flikrad, för lugnets skull. */
+  const about = tab === "masters";
+
   return (
     <div style={{ minHeight: "100vh", background: C.fairway, fontFamily: FONT, color: C.paper }}>
       <style>{`
@@ -40,8 +44,10 @@ export default function App() {
         ::-webkit-scrollbar{display:none}
       `}</style>
 
-      <Masthead sync={sync} />
-      <Tabs tab={tab} setTab={setTab} />
+      {!about && <Masthead sync={sync} />}
+      {!about && <Tabs tab={tab} setTab={setTab} />}
+
+      {about && <Masters onBack={() => { setTab("schema"); window.scrollTo(0, 0); }} />}
 
       {tab === "schema" && (
         <Schedule
@@ -49,6 +55,7 @@ export default function App() {
           onPickMe={chooseMe}
           onReset={reset}
           onOpen={(id) => { setRoundId(id); setHole(0); setTab("bana"); }}
+          onAbout={() => setTab("masters")}
         />
       )}
       {tab === "bana" && (
@@ -218,7 +225,7 @@ const parColor = (n) => (n < 0 ? "#6FBE8F" : n === 0 ? C.paper : C.clay);
    SCHEMA
    ========================================================= */
 
-function Schedule({ me, onPickMe, onOpen, onReset }) {
+function Schedule({ me, onPickMe, onOpen, onReset, onAbout }) {
   return (
     <div style={{ padding: "20px 16px 60px" }}>
       <WhoAmI me={me} onPick={onPickMe} />
@@ -252,6 +259,16 @@ function Schedule({ me, onPickMe, onOpen, onReset }) {
           </button>
         );
       })}
+
+      <button onClick={onAbout} style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+        width: "100%", marginTop: 4, padding: "12px 0", cursor: "pointer",
+        background: "rgba(255,255,255,0.04)", border: `1px solid ${C.line}`, borderRadius: 12,
+        color: C.mutedGreen, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+      }}>
+        Om mästerskapet <span style={{ color: C.gold }}>→</span>
+      </button>
+
       <ResetData onReset={onReset} />
     </div>
   );
@@ -508,6 +525,348 @@ function Nine({ title, holes }) {
           <span style={{ width: 62, textAlign: "right" }}>{h.m}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* =========================================================
+   MÄSTERSKAPET
+
+   Nås från Schema, inte från flikraden — App döljer masthead och
+   flikar medan den är öppen, så sidan får vara en sida. Texterna
+   ligger i MASTERS i data.js; här finns bara typografin.
+
+   Luftigare än övriga vyer med flit: bredare marginaler, större
+   radavstånd och gott om utrymme mellan avsnitten.
+   ========================================================= */
+
+/* Rubrikstil för avsnitten: Oswald, spärrat, med ett tunt guldstreck
+   under. Samma mall för Residenset, Deltagarna och varje upplaga. */
+function MastersHeading({ children }) {
+  return (
+    <div style={{ margin: "42px 0 18px" }}>
+      <h2 style={{
+        fontFamily: DISPLAY, fontSize: 16, fontWeight: 700, margin: 0,
+        textTransform: "uppercase", letterSpacing: "0.2em", color: C.goldBright,
+      }}>
+        {children}
+      </h2>
+      <div style={{ width: 46, height: 1, background: C.gold, marginTop: 11 }} />
+    </div>
+  );
+}
+
+function MastersProse({ paragraphs }) {
+  return paragraphs.map((t, i) => (
+    <p key={i} style={{
+      fontSize: 14, lineHeight: 1.95, color: "rgba(243,238,221,0.84)",
+      margin: i === 0 ? "0 0 18px" : "0 0 18px", textAlign: "left",
+    }}>{t}</p>
+  ));
+}
+
+function MastersPerson({ id, body }) {
+  const player = PLAYERS.find((x) => x.id === id);
+  if (!player) return null;
+  return (
+    <div style={{
+      display: "flex", gap: 14, alignItems: "flex-start",
+      background: C.paper, borderRadius: 14, borderLeft: `4px solid ${player.color}`,
+      padding: "16px 18px", marginBottom: 13,
+    }}>
+      <img
+        src={PORTRAITS[id]}
+        alt={player.name}
+        width={56}
+        height={56}
+        loading="lazy"
+        style={{
+          width: 56, height: 56, objectFit: "cover", borderRadius: 12,
+          flexShrink: 0, display: "block", background: C.paperDark,
+        }}
+      />
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, color: C.ink,
+          textTransform: "uppercase", letterSpacing: "0.06em", lineHeight: 1.1,
+        }}>
+          {player.name}
+        </div>
+        <p style={{ fontSize: 13, lineHeight: 1.78, color: C.muted, margin: "8px 0 0" }}>
+          {body}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function BackToSchedule({ onBack }) {
+  return (
+    <button onClick={onBack} style={{
+      display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
+      background: "rgba(255,255,255,0.05)", border: `1px solid ${C.line}`, borderRadius: 20,
+      color: C.mutedGreen, fontSize: 12, fontWeight: 700, padding: "9px 15px",
+    }}>
+      <ChevronLeft size={14} strokeWidth={2.4} /> Schema
+    </button>
+  );
+}
+
+/* ---------- Historik: en spelad upplaga ----------
+
+   Slutställningen syns direkt; rundorna, Dream 18 och awards ligger
+   bakom "Visa detaljer" så sidan inte svämmar över. Alla siffror
+   kommer förräknade från datakonstanten — här räknas ingenting.  */
+
+function EditionSub({ children }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 800, color: C.mutedGreen, textTransform: "uppercase",
+      letterSpacing: "0.18em", margin: "26px 0 12px",
+    }}>
+      {children}
+    </div>
+  );
+}
+
+/* Fotnot i samma dämpade ton som noterna på Ölkurvan. */
+function EditionNote({ children }) {
+  return (
+    <p style={{ fontSize: 11.5, lineHeight: 1.7, color: C.dim, margin: "11px 0 0" }}>
+      {children}
+    </p>
+  );
+}
+
+/* Slutställning i Leaderboardens stil: guldkort på segraren, färgprick
+   per spelare, siffrorna i monospace. */
+function EditionStandings({ rows }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {rows.map((r, i) => {
+        const p = PLAYERS.find((x) => x.id === r.id);
+        const first = i === 0;
+        return (
+          <div key={r.id} style={{
+            display: "flex", alignItems: "center", gap: 11,
+            background: first ? C.gold : C.paper, borderRadius: 12, padding: "12px 14px",
+          }}>
+            <div style={{
+              fontFamily: DISPLAY, fontSize: 19, fontWeight: 700, width: 20,
+              color: first ? C.fairwayDark : C.muted,
+            }}>{i + 1}</div>
+            <div style={{ width: 9, height: 9, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14.5, color: C.ink }}>
+              {p.name}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: parColor(r.over) }}>
+                {fmtPar(r.over)}
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 11, color: C.muted }}>{r.strokes}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EditionRound({ round }) {
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.04)", border: `1px solid ${C.line}`,
+      borderRadius: 12, padding: "12px 14px", marginBottom: 9,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.paper }}>
+        {round.date} <span style={{ color: C.mutedGreen, fontWeight: 600 }}>· {round.course}</span>
+      </div>
+      <div style={{ fontSize: 10.5, color: C.dim, marginTop: 2 }}>Par {round.parTotal}</div>
+      <div style={{ display: "flex", gap: 6, marginTop: 11, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
+        {PLAYERS.map((p) => {
+          const t = round.totals[p.id];
+          if (!t) return null;
+          return (
+            <div key={p.id} style={{ flex: 1, textAlign: "center", minWidth: 0 }}>
+              <div style={{
+                fontSize: 9.5, color: C.mutedGreen, whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis",
+              }}>{p.name}</div>
+              <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.paper, marginTop: 3 }}>
+                {t.strokes}
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 10.5, color: parColor(t.over), marginTop: 1 }}>
+                {fmtPar(t.over)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EditionDream18({ rows }) {
+  return (
+    <div style={{ background: C.paper, borderRadius: 12, overflow: "hidden" }}>
+      {rows.map((r, i) => {
+        const p = PLAYERS.find((x) => x.id === r.id);
+        return (
+          <div key={r.id} style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+            borderTop: i === 0 ? "none" : `1px solid ${C.paperDark}`,
+          }}>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+            <span style={{ flex: 1, fontWeight: 800, fontSize: 13.5, color: C.ink }}>{p.name}</span>
+            <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.ink }}>{r.strokes}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Går igenom samma AWARDS-lista som Awards-fliken, så ikoner, rubriker
+   och ordning är identiska. Saknas nyckeln i upplagans data ritas
+   kortet som "—" — det gäller grenarna där 2025 saknar statistik. */
+function EditionAwards({ awards }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      {AWARDS.map((a) => {
+        const w = awards[a.k], I = a.i;
+        const winners = w ? w.ids.map((id) => PLAYERS.find((x) => x.id === id)).filter(Boolean) : [];
+        return (
+          <div key={a.k} style={{
+            display: "flex", alignItems: "center", gap: 13,
+            background: w ? C.paper : "rgba(255,255,255,0.035)",
+            border: w ? "none" : `1px dashed ${C.line}`,
+            borderRadius: 13, padding: "13px 14px",
+          }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+              background: w ? C.fairway : "rgba(255,255,255,0.05)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <I size={19} color={w ? C.goldBright : C.dim} strokeWidth={2.2} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5, color: w ? C.ink : C.mutedGreen }}>{a.t}</div>
+              <div style={{ fontSize: 11, color: w ? C.muted : C.dim, marginTop: 1 }}>{a.d}</div>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              {w ? (
+                <>
+                  {winners.map((p) => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+                      <span style={{ fontWeight: 800, fontSize: 12.5, color: C.ink }}>{p.name}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontFamily: MONO, fontSize: 10, color: C.muted, marginTop: 3 }}>
+                    {winners.length > 1 ? `delad · ${w.v}` : w.v}
+                  </div>
+                </>
+              ) : <span style={{ fontSize: 11.5, color: C.dim }}>—</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EditionDetails({ data }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <EditionStandings rows={data.standings} />
+
+      <button onClick={() => setOpen((o) => !o)} style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+        width: "100%", marginTop: 12, padding: "11px 0", cursor: "pointer",
+        background: "rgba(255,255,255,0.04)", border: `1px solid ${C.line}`, borderRadius: 12,
+        color: C.mutedGreen, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+      }}>
+        {open ? "Dölj detaljer" : "Visa detaljer"}
+        <ChevronDown size={14} strokeWidth={2.4} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 4 }}>
+          <EditionSub>Rundorna</EditionSub>
+          {data.rounds.map((r) => <EditionRound key={r.id} round={r} />)}
+          {data.courseNote && <EditionNote>{data.courseNote}</EditionNote>}
+
+          <EditionSub>Dream 18</EditionSub>
+          <EditionDream18 rows={data.dream18.rows} />
+          {data.dream18.note && <EditionNote>{data.dream18.note}</EditionNote>}
+
+          <EditionSub>Awards {data.year}</EditionSub>
+          <EditionAwards awards={data.awards} />
+          {data.awardsNote && <EditionNote>{data.awardsNote}</EditionNote>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Masters({ onBack }) {
+  /* Sidan öppnas från en scrollad Schema-vy — börja från början. */
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
+  return (
+    <div style={{ padding: "16px 22px 80px", maxWidth: 640, margin: "0 auto" }}>
+      <BackToSchedule onBack={onBack} />
+
+      {/* Titelblad */}
+      <div style={{ textAlign: "center", padding: "44px 0 10px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 11 }}>
+          <div style={{ width: 44, height: 1, background: C.line }} />
+          <Flag size={16} color={C.gold} strokeWidth={2.6} />
+          <div style={{ width: 44, height: 1, background: C.line }} />
+        </div>
+        <h1 style={{
+          fontFamily: DISPLAY, fontSize: 34, fontWeight: 700, margin: "20px 0 0",
+          textTransform: "uppercase", letterSpacing: "0.05em", lineHeight: 1.12, color: C.paper,
+        }}>
+          {MASTERS.title}
+        </h1>
+        <div style={{
+          fontSize: 9.5, color: C.mutedGreen, letterSpacing: "0.26em",
+          textTransform: "uppercase", marginTop: 16, lineHeight: 2,
+        }}>
+          {MASTERS.founded}
+        </div>
+      </div>
+
+      <div style={{ margin: "34px auto 40px", width: 100, height: 1, background: C.line }} />
+
+      <MastersProse paragraphs={MASTERS.intro} />
+
+      <MastersHeading>{MASTERS.residence.title}</MastersHeading>
+      <MastersProse paragraphs={MASTERS.residence.body} />
+
+      <MastersHeading>{MASTERS.participants.title}</MastersHeading>
+      {MASTERS.participants.people.map((x) => (
+        <MastersPerson key={x.id} id={x.id} body={x.body} />
+      ))}
+
+      {/* Upplagorna ritas i tur och ordning. En upplaga med bevarade
+          scorekort får sin tabell här under texten. */}
+      {MASTERS.editions.map((e) => (
+        <div key={e.id}>
+          <MastersHeading>{e.title}</MastersHeading>
+          <MastersProse paragraphs={e.body} />
+          {e.data && <EditionDetails data={e.data} />}
+        </div>
+      ))}
+
+      <div style={{ margin: "34px auto 26px", width: 100, height: 1, background: C.line }} />
+
+      <div style={{ textAlign: "center" }}>
+        <BackToSchedule onBack={onBack} />
+      </div>
     </div>
   );
 }

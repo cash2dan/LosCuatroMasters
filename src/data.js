@@ -3,6 +3,14 @@
    Spanien 11–13 september
    ========================================================= */
 
+/* Porträtten ligger i src/assets och buntas av Vite: små filer blir
+   base64 i JS-bundeln, större hamnar som egna filer i dist/assets.
+   600×600 räcker gott — de visas som 56 px miniatyrer. */
+import larsImg from "./assets/lars.jpeg";
+import perImg from "./assets/per.jpeg";
+import jonssonImg from "./assets/jonsson.jpeg";
+import johanssonImg from "./assets/johansson.jpeg";
+
 export const C = {
   fairway: "#0F3B2E",
   fairwayDark: "#0A2A21",
@@ -147,4 +155,197 @@ export const normalizeBeers = (data) => {
   const o = {};
   for (const r of ROUNDS) o[r.id] = normalizeRoundBeers(data?.[r.id]);
   return o;
+};
+
+/* =========================================================
+   UPPLAGA II — 2025
+
+   Statisk historik. Ligger med flit utanför Firestore: den är
+   färdigspelad och ska varken synkas, cachas eller kunna ändras.
+
+   Hål-för-hål-datan är omstrukturerad från scorekorten i data/
+   (2025-*.csv, semikolonseparerade). HCP, hål-HCP och netto är
+   utelämnade — appen räknar brutto.
+
+   Summorna nedan är förräknade och stämmer mot scorekorten. Räkna
+   inte om dem i appen; ligger de förräknade kan de inte glida isär
+   från det som faktiskt spelades.
+   ========================================================= */
+
+export const EDITION_2025 = {
+  year: 2025,
+  rounds: [
+    {
+      id: "naranjos", date: "19 september", iso: "2025-09-19",
+      course: "Los Naranjos Golf Club", parTotal: 72,
+      par: [ 4,  5,  4,  3,  5,  4,  4,  3,  4,  4,  4,  3,  4,  5,  4,  4,  3,  5],
+      scores: {
+        jonsson:   [ 5, 10,  5,  5,  6,  5,  5,  5,  5,  5,  5,  5,  6,  7,  4,  5,  5,  6],
+        johansson: [ 5,  9,  7,  5, 10,  9,  6,  5,  9,  6,  6,  5,  7,  9,  9,  7,  5,  9],
+        per:       [ 4,  5,  7,  4,  6,  8,  4,  3,  5,  5,  5,  3,  6,  6,  3,  6,  4,  7],
+        lars:      [ 5,  5,  4,  4,  5,  7,  5,  5,  5,  4,  5,  5,  6,  6,  4,  4,  5,  5],
+      },
+      totals: {
+        jonsson:   { strokes:  99, over: 27 },
+        johansson: { strokes: 128, over: 56 },
+        per:       { strokes:  91, over: 19 },
+        lars:      { strokes:  89, over: 17 },
+      },
+    },
+    {
+      id: "santana", date: "20 september", iso: "2025-09-20",
+      course: "Santana Golf", parTotal: 72,
+      par: [ 4,  3,  4,  5,  4,  4,  3,  5,  4,  5,  4,  3,  4,  4,  5,  3,  4,  4],
+      scores: {
+        jonsson:   [ 5,  4,  5,  6,  5,  4,  5,  6,  6,  5,  5,  4,  5,  4,  7,  3,  7,  6],
+        johansson: [ 9,  4,  7,  9,  8,  7,  6,  8,  7,  9,  6,  4,  8,  6,  8,  5,  9,  9],
+        per:       [ 5,  5,  4,  6,  5,  4,  3,  6,  5,  6,  4,  3,  5,  4,  6,  3,  4,  5],
+        lars:      [ 5,  4,  4,  7,  4,  4,  4,  6,  4,  6,  5,  2,  5,  5,  4,  4,  5,  5],
+      },
+      totals: {
+        jonsson:   { strokes:  92, over: 20 },
+        johansson: { strokes: 129, over: 57 },
+        per:       { strokes:  83, over: 11 },
+        lars:      { strokes:  83, over: 11 },
+      },
+    },
+    {
+      id: "lagos", date: "21 september", iso: "2025-09-21",
+      course: "Mijas Golf, Los Lagos", parTotal: 72,
+      par: [ 5,  3,  4,  4,  5,  4,  4,  3,  4,  4,  3,  4,  5,  4,  5,  3,  4,  4],
+      scores: {
+        jonsson:   [ 7,  4,  6,  7,  6,  5,  6,  4,  6,  6,  3,  6,  7,  5,  5,  3,  5,  6],
+        johansson: [ 7,  3,  5,  6,  9,  9,  9,  8,  6,  7,  6,  9,  8,  6,  7,  4,  5,  7],
+        per:       [ 7,  3,  5,  6,  8,  6,  5,  4,  5,  3,  3,  5,  7,  5,  8,  4,  5,  4],
+        lars:      [ 6,  4,  6,  4,  4,  4,  3,  5,  6,  4,  3,  5,  5,  4,  6,  4,  5,  5],
+      },
+      totals: {
+        jonsson:   { strokes:  97, over: 25 },
+        johansson: { strokes: 121, over: 49 },
+        per:       { strokes:  93, over: 21 },
+        lars:      { strokes:  83, over: 11 },
+      },
+    },
+  ],
+
+  /* Slutställning: totala bruttoslag över de tre rundorna, par 216. */
+  parTotal: 216,
+  standings: [
+    { id: "lars", strokes: 255, over: 39 },
+    { id: "per", strokes: 267, over: 51 },
+    { id: "jonsson", strokes: 288, over: 72 },
+    { id: "johansson", strokes: 378, over: 162 },
+  ],
+
+  /* Dream 18: lägsta score per hålnummer över de tre rundorna. */
+  dream18: {
+    rows: [
+      { id: "per", strokes: 67 },
+      { id: "lars", strokes: 73 },
+      { id: "jonsson", strokes: 81 },
+      { id: "johansson", strokes: 102 },
+    ],
+    note: "Per vann Dream 18 med sex slag trots att han förlorade mästerskapet med tolv. Hans bästa hål var bättre — Lars var jämnare.",
+  },
+
+  /* Nycklarna är desamma som i AWARDS i App.jsx, så sidan kan gå
+     igenom samma lista med samma ikoner och rubriker. De som saknas
+     ritas som "—". `ids` är en lista eftersom Comeback King delades. */
+  awards: {
+    comeback:    { ids: ["per", "jonsson", "johansson"], v: "4 slag bättre" },
+    consistency: { ids: ["lars"], v: "±0,87" },
+    clutch:      { ids: ["lars"], v: "0,17 bättre sista 3" },
+    streak:      { ids: ["per"], v: "16 hål" },
+    birdies:     { ids: ["lars"], v: "4 st" },
+  },
+  awardsNote: "Statistik för GIR, puttar och öl saknas för 2025.",
+
+  courseNote: "Santana spelades även 2025, vilket gör årets fredagsrunda direkt jämförbar.",
+};
+
+/* =========================================================
+   MÄSTERSKAPET — texterna till "Om mästerskapet"
+
+   All text bor här, inte i JSX, så den går att redigera utan att
+   röra gränssnittet. Sidan renderas av `Masters` i App.jsx.
+
+   `MASTERS.editions` är listan över upplagor och ritas i den
+   ordning den står, kronologiskt. En upplaga med bevarade scorekort
+   får ett `data`-fält som pekar på sin datakonstant — `Masters`
+   ritar `body` som text och slutställning plus utfällbara detaljer
+   under. Upplaga II är den första med bevarade kort.
+   ========================================================= */
+
+export const PORTRAITS = {
+  lars: larsImg,
+  per: perImg,
+  jonsson: jonssonImg,
+  johansson: johanssonImg,
+};
+
+export const MASTERS = {
+  title: "Los Cuatro Masters",
+  founded: "Grundat MMXXIV · Costa del Sol · Andalusien",
+
+  intro: [
+    "I en tid då golfens själ alltför ofta offras på kommersialismens altare står Los Cuatro Masters kvar som en påminnelse om spelets ursprungliga ideal: vänskap, heder, och obeveklig statistisk redovisning.",
+    "Sällskapet utgörs av fyra herrar från Kristinehamn, förenade sedan barndomen och numera stadda i den ålder då ryggen värker men självförtroendet är intakt. Sedan dess har de skingrats över Norden, men samlas varje år på nytt för att under tre rundor göra upp om den titel som ingen utomstående känner till men som för de invigda överskuggar allt annat.",
+  ],
+
+  residence: {
+    title: "Residenset",
+    body: [
+      "Turneringens högkvarter är sedan grundandet beläget i Calahonda, i en villa upplåten av Per — vars initiativ till mästerskapet får anses vara hans främsta gärning, hans övriga meriter till trots. Boendet är kostnadsfritt. Denna omständighet har genom åren vuxit från praktisk detalj till helig institution, och må aldrig ifrågasättas av vare sig deltagare eller eftervärld.",
+    ],
+  },
+
+  /* Ordningen här styr korten på sidan och är medvetet en annan än
+     PLAYERS — namn och färg hämtas därifrån via id. */
+  participants: {
+    title: "Deltagarna",
+    people: [
+      {
+        id: "lars",
+        body: "Sällskapets otvivelaktigt främste spelare, en bedömning som han själv aldrig gjort anspråk på men som eftervärlden får anses ha fastställt. Hans spel präglas av en teknisk säkerhet de övriga endast kan betrakta med vördnad — ända till det ögonblick då en quick hook eller en välplacerad socket påminner samtliga närvarande om att även mästare är dödliga.",
+      },
+      {
+        id: "per",
+        body: "Mästerskapets grundare och dess jämnaste utövare. Där andra svänger mellan storhet och katastrof håller Per en linje av beundransvärd stadga. Denna yttre lugn har dock sitt pris, och vid enstaka tillfällen har temperamentet gjort sig påmint på ett sätt som fått medspelare att söka skydd bakom närmaste bunkerkant.",
+      },
+      {
+        id: "jonsson",
+        body: "En spelare med kapacitet att hålla samman nio hål av hög klass, varefter formen med matematisk pålitlighet lämnar honom. Bollflykten alternerar mellan hook och slice utan förvarning eller mönster, vilket gjort begreppet fairwayträff till något av en teoretisk konstruktion. Därtill bär han på en väldokumenterad skräck inför putten, ett förhållande som mästerskapets statistik numera obarmhärtigt kommer att belägga.",
+      },
+      {
+        id: "johansson",
+        body: "Sällskapets mest oförutsägbara element, som växlar mellan briljans och förfall inom loppet av ett och samma hål. Detta får dock ses i sitt rätta ljus: före 2024 hade han inte hållit i en klubba på trettio år. De framsteg han sedan dess uppvisat är av ett slag som normalt endast förekommer i uppbyggliga berättelser, och tvingar de övriga att med viss oro betrakta kommande upplagor.",
+      },
+    ],
+  },
+
+  editions: [
+    {
+      id: "i",
+      title: "Upplaga I — 2024",
+      body: [
+        "Den första upplagan avgjordes över två dagar: La Cala Resort, Campo Asia den 6 september, och Atalaya Golf, Old Course den 7 september.",
+        "Inga scorekort finns bevarade. Vad som då utspelade sig tillhör därmed den muntliga traditionen, där segrarens identitet växlar beroende på vem som berättar och hur sent på kvällen det sker.",
+      ],
+    },
+    {
+      id: "ii",
+      title: "Upplaga II — 2025",
+      body: [
+        "Mästerskapets andra upplaga spelades över tre rundor i Andalusien. Lars Munther tog titeln med tolv slags marginal.",
+      ],
+      data: EDITION_2025,
+    },
+    {
+      id: "iii",
+      title: "Upplaga III — 2026",
+      body: [
+        "Med upplaga III inträder mästerskapet i sin dokumenterade era. Varje slag registreras. Varje putt räknas. Varje öl loggas. Eftervärlden kommer att veta.",
+      ],
+    },
+  ],
 };

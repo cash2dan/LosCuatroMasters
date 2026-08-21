@@ -17,6 +17,9 @@ inget Tailwind). Färger, typsnitt och bandata bor i `src/data.js`.
 
 ```
 src/data.js         Bandata, spelare, färger, typsnitt, score- och ölmodell
+                    samt MASTERS och EDITION_2025 — Om mästerskapet
+src/assets/         Porträtt (600×600 jpeg), importeras från data.js
+data/               Scorekort 2025 i csv. Källmaterial, inte kod
 src/App.jsx         Hela gränssnittet + award-beräkningarna
 src/beer.js         Ölkurvans matematik (nivåer, viktad regression)
 src/useScores.js    Firestore-synk, debounce, offlinekö, "vem är du"
@@ -34,6 +37,12 @@ Awards · Regler.
 Åtta flikar får inte plats på en mobilskärm: raden scrollar i sidled och
 `Tabs` drar in den valda fliken i bild med `scrollIntoView`. Läggs fler
 flikar till är det den mekaniken som håller navigationen hel.
+
+**Mästerskapet är ingen flik.** Sidan når man via knappen "Om
+mästerskapet →" längst ner i Schema, och den tar över hela vyn — App
+döljer både masthead och flikrad medan `tab === "masters"`. Tillbaka
+går man med Schema-knappen högst upp eller längst ner på sidan. Håll
+den utanför `TABS`: flikraden är redan full.
 
 ## Datamodell i Firestore
 
@@ -106,6 +115,64 @@ spelare i spelarens färg, punktradien skalar med antal hål bakom nivån),
 teckenförklaring, och en trendlista sorterad bäst först. Växlaren
 Totalt/Fre/Lör/Sön är samma `DayPills` som Leaderboard och Awards.
 Totalt är standard och slår ihop hål från alla rundor per öl-nivå.
+
+## Mästerskapet
+
+Presentationssidan: turneringens historia, residenset i Calahonda och
+de fyra deltagarna. Tonen är medvetet högtidlig, och typografin är
+luftigare än övriga vyer — bredare marginaler, radavstånd 1,95 i
+brödtexten och gott om luft mellan avsnitten. Oswald i rubrikerna,
+Inter i brödtexten som i resten av appen.
+
+All text ligger i `MASTERS` i `src/data.js`, inte i JSX, så den går att
+redigera utan att röra gränssnittet. `Masters` i `App.jsx` innehåller
+bara typografin (`MastersHeading`, `MastersProse`, `MastersPerson`).
+
+Porträtten importeras i `data.js` och exponeras via `PORTRAITS`, en map
+per spelar-id. De visas 56×56 med `object-fit: cover`. Filerna är
+600×600 och buntas som egna filer i `dist/assets` — de ligger alltså
+inte i JS-bundeln, men **precachas av service workern** (≈355 kB, en
+knapp fjärdedel av precachen). Byts porträtten ut är det den siffran
+att hålla ögonen på.
+
+`MASTERS.participants.people` har sin egen ordning (Lars, Per, Jonsson,
+Johansson) — namn och accentfärg hämtas från `PLAYERS` via `id`.
+
+### Upplagorna
+
+`MASTERS.editions` ritas i den ordning den står, kronologiskt: I (2024),
+II (2025), III (2026). Varje post är `{ id, title, body: [...] }`, och
+en upplaga med bevarad statistik får dessutom `data` som pekar på sin
+datakonstant. Har posten `data` ritar `Masters` en `EditionDetails`
+under texten; saknas den blir det bara löptext, som för I och III.
+
+`EditionDetails` visar slutställningen direkt och lägger rundorna,
+Dream 18 och awards bakom "Visa detaljer". Delkomponenterna
+(`EditionStandings`, `EditionRound`, `EditionDream18`, `EditionAwards`)
+lånar Leaderboardens och Awards-flikens formspråk med flit — guldkort
+på segraren, färgprick per spelare, monospace i siffrorna.
+
+`EditionAwards` går igenom **samma `AWARDS`-array** som Awards-fliken,
+så ikoner, rubriker och ordning följer med automatiskt. Upplagans
+`awards` är en map på samma nycklar; saknas en nyckel ritas kortet som
+"—". `ids` är en lista, eftersom Comeback King 2025 delades av tre.
+
+### EDITION_2025
+
+Komplett hål-för-hål-data för 2025, omstrukturerad från scorekorten i
+`data/2025-*.csv` (semikolonseparerade, 72 rader per runda). HCP,
+hål-HCP och netto är utelämnade — appen räknar brutto. Spelarnamnen i
+csv-filerna (Per Welin, Lars Munther, Daniel Jonsson, Daniel Johansson)
+är mappade till appens spelar-id.
+
+**Datan är statisk och ska aldrig till Firestore.** Den är färdigspelad
+historik: inget att synka, inget att ändra, inget som ska dela kod med
+`useScores`.
+
+Summorna — rundtotaler, slutställning och Dream 18 — ligger
+**förräknade** i konstanten och räknas inte om i appen. De är avstämda
+mot scorekorten. Ändras hål-för-hål-datan måste summorna uppdateras för
+hand, annars glider de isär.
 
 ## Awards
 
