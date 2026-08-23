@@ -35,6 +35,14 @@ export const MONO = "'Space Mono', ui-monospace, monospace";
 
 /* ---------- Trip data ---------- */
 
+/* Årets upplaga. Ligger samlat här så årtalet bara står på ett ställe
+   — headern visar det på varje flik. */
+export const EVENT = {
+  year: "2026",
+  place: "Costa del Sol",
+  dates: "11–13 sep",
+};
+
 export const PLAYERS = [
   { id: "jonsson", name: "Jonsson", color: "#E4C13D" },
   { id: "johansson", name: "Johansson", color: "#7FA88C" },

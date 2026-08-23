@@ -21,6 +21,7 @@ src/data.js         Bandata, spelare, färger, typsnitt, score- och ölmodell
 src/assets/         Porträtt (600×600 jpeg), importeras från data.js
 data/               Scorekort 2025 i csv. Källmaterial, inte kod
 src/App.jsx         Hela gränssnittet + award-beräkningarna
+src/Crest.jsx       LCM-vapnet som SVG-komponent
 src/beer.js         Ölkurvans matematik (nivåer, viktad regression)
 src/useScores.js    Firestore-synk, debounce, offlinekö, "vem är du"
 src/usePwaUpdate.js Service worker-registrering + uppdateringsnotis
@@ -38,11 +39,42 @@ Awards · Regler.
 `Tabs` drar in den valda fliken i bild med `scrollIntoView`. Läggs fler
 flikar till är det den mekaniken som håller navigationen hel.
 
-**Mästerskapet är ingen flik.** Sidan når man via knappen "Om
-mästerskapet →" längst ner i Schema, och den tar över hela vyn — App
+**Mästerskapet är ingen flik.** Sidan når man via kortet "Om
+mästerskapet" längst ner i Schema, och den tar över hela vyn — App
 döljer både masthead och flikrad medan `tab === "masters"`. Tillbaka
 går man med Schema-knappen högst upp eller längst ner på sidan. Håll
 den utanför `TABS`: flikraden är redan full.
+
+## LCM-vapnet
+
+`src/Crest.jsx` — sköld med green, flagga och band, i en viewBox på
+48 × 62. Props: `size` (höjd i px, bredden räknas ut), `color` och
+`ribbonTextColor`.
+
+Bandet **fylls** med `color`, så texten på det behöver en egen färg.
+`ribbonTextColor` ligger default på mörk fairwaygrön, vilket stämmer
+när märket är guld på mörk botten. Är `color` mörk — som på det ljusa
+Om mästerskapet-kortet — måste den sättas till `C.paper`, annars blir
+LCM osynligt.
+
+LCM sätts i Oswald. Typsnittet laddas globalt i `main.jsx` och gäller
+även text inuti inline-SVG. Används vapnet någon gång i ett samman-
+hang utan Oswald faller det tillbaka på Arial Narrow och ser fel ut.
+
+Tre platser i dag:
+
+| Plats | Storlek | Färg |
+|---|---|---|
+| Headern, före titeln | 40 | `C.goldBright` |
+| Om mästerskapet-kortet | 46 | `C.fairway`, band i `C.paper` |
+| Mästerskapet-sidan, överst | 92 | `C.goldBright` |
+
+Headern har inte längre flaggikonen med linjer över titeln — vapnet
+ligger i stället till vänster om de två textraderna, hela gruppen
+centrerad. Titeln behöver 255 px på en rad, så under ca 340 px vik
+lockupen ner sig till två rader bredvid vapnet. Det är avsiktligt och
+ser bra ut; att krympa vapnet räddar det inte, eftersom det är titeln
+som tar plats.
 
 ## Datamodell i Firestore
 

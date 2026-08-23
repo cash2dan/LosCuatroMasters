@@ -7,10 +7,11 @@ import {
 } from "lucide-react";
 
 import {
-  C, FONT, DISPLAY, MONO, PLAYERS, ROUNDS, MASTERS, PORTRAITS,
+  C, FONT, DISPLAY, MONO, PLAYERS, ROUNDS, EVENT, MASTERS, PORTRAITS,
 } from "./data";
 import { useScores, useMe } from "./useScores";
 import { usePwaUpdate } from "./usePwaUpdate";
+import Crest from "./Crest";
 import { beerCurves, weightedSlope, beerLevels, slopeText } from "./beer";
 
 /* =========================================================
@@ -89,26 +90,31 @@ export default function App() {
    CHROME
    ========================================================= */
 
+/* En enda kompakt header på alla flikar, Schema inräknat. Den ligger
+   ovanför scoreinmatningen och får inte växa. */
 function Masthead({ sync }) {
   const label = sync === "loading" ? "Laddar…" : sync === "saving" ? "Sparar…" : sync === "error" ? "Ej synkad" : "Synkad";
   const dot = sync === "error" ? C.clay : sync === "ok" ? "#6FBE8F" : C.mutedGreen;
   return (
     <div style={{ padding: "20px 16px 4px", textAlign: "center" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }}>
-        <div style={{ width: 30, height: 1, background: C.line }} />
-        <Flag size={15} color={C.gold} strokeWidth={2.6} />
-        <div style={{ width: 30, height: 1, background: C.line }} />
+      {/* Vapnet till vänster om de två textraderna, hela gruppen
+          centrerad. 40 px höjd balanserar raderna och lämnar marginal
+          nog att titeln håller sig på en rad ner till 320 px. */}
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 11, textAlign: "left" }}>
+        <Crest size={40} color={C.goldBright} />
+        <div>
+          <h1 style={{
+            fontFamily: DISPLAY, fontSize: 26, fontWeight: 700, margin: 0,
+            textTransform: "uppercase", letterSpacing: "0.04em", lineHeight: 1.1,
+          }}>
+            Los Cuatro <span style={{ color: C.goldBright }}>Masters</span>
+          </h1>
+          <div style={{ fontSize: 10.5, color: C.mutedGreen, letterSpacing: "0.18em", textTransform: "uppercase", marginTop: 4 }}>
+            {`${EVENT.place} · ${EVENT.dates} ${EVENT.year}`}
+          </div>
+        </div>
       </div>
-      <h1 style={{
-        fontFamily: DISPLAY, fontSize: 26, fontWeight: 700, margin: "8px 0 0",
-        textTransform: "uppercase", letterSpacing: "0.04em", lineHeight: 1.1,
-      }}>
-        Los Cuatro <span style={{ color: C.goldBright }}>Masters</span>
-      </h1>
-      <div style={{ fontSize: 10.5, color: C.mutedGreen, letterSpacing: "0.18em", textTransform: "uppercase", marginTop: 5 }}>
-        Costa del Sol · 11–13 sep
-      </div>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, fontSize: 10.5, color: C.dim }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 9, fontSize: 10.5, color: C.dim }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot }} />
         {label}
       </div>
@@ -228,6 +234,31 @@ const parColor = (n) => (n < 0 ? "#6FBE8F" : n === 0 ? C.paper : C.clay);
 function Schedule({ me, onPickMe, onOpen, onReset, onAbout }) {
   return (
     <div style={{ padding: "20px 16px 60px" }}>
+      {/* Ligger först på sidan, direkt under flikraden. Till skillnad
+          från rundkorten är det inte papper — det stannar på sidans
+          egen botten och ramas in i stället, så det inte konkurrerar
+          med listan under. */}
+      <button onClick={onAbout} style={{
+        display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "left",
+        cursor: "pointer", marginBottom: 22, padding: "14px 16px",
+        background: "rgba(255,255,255,0.04)", borderRadius: 14,
+        border: `1px solid rgba(243,238,221,0.35)`,
+      }}>
+        <Crest size={46} color={C.goldBright} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: DISPLAY, fontSize: 20, fontWeight: 700, color: C.paper,
+            textTransform: "uppercase", letterSpacing: "0.03em", lineHeight: 1.15,
+          }}>
+            Om mästerskapet
+          </div>
+          <div style={{ fontSize: 12, color: C.mutedGreen, marginTop: 3 }}>
+            Deltagare, historik och tidigare upplagor
+          </div>
+        </div>
+        <ChevronRight size={18} color={C.mutedGreen} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+      </button>
+
       <WhoAmI me={me} onPick={onPickMe} />
       <Head icon={Calendar} title="Schema" sub="Tre rundor, två banor" />
       {ROUNDS.map((r) => {
@@ -259,15 +290,6 @@ function Schedule({ me, onPickMe, onOpen, onReset, onAbout }) {
           </button>
         );
       })}
-
-      <button onClick={onAbout} style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-        width: "100%", marginTop: 4, padding: "12px 0", cursor: "pointer",
-        background: "rgba(255,255,255,0.04)", border: `1px solid ${C.line}`, borderRadius: 12,
-        color: C.mutedGreen, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
-      }}>
-        Om mästerskapet <span style={{ color: C.gold }}>→</span>
-      </button>
 
       <ResetData onReset={onReset} />
     </div>
@@ -565,6 +587,8 @@ function MastersProse({ paragraphs }) {
   ));
 }
 
+/* Porträttet i en egen kolumn, texten i en egen bredvid — ingen text
+   löper under bilden. Bilden får inte krympa när texten är lång. */
 function MastersPerson({ id, body }) {
   const player = PLAYERS.find((x) => x.id === id);
   if (!player) return null;
@@ -577,11 +601,11 @@ function MastersPerson({ id, body }) {
       <img
         src={PORTRAITS[id]}
         alt={player.name}
-        width={56}
-        height={56}
+        width={112}
+        height={112}
         loading="lazy"
         style={{
-          width: 56, height: 56, objectFit: "cover", borderRadius: 12,
+          width: 112, height: 112, objectFit: "cover", borderRadius: 12,
           flexShrink: 0, display: "block", background: C.paperDark,
         }}
       />
@@ -821,13 +845,11 @@ function Masters({ onBack }) {
 
       {/* Titelblad */}
       <div style={{ textAlign: "center", padding: "44px 0 10px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 11 }}>
-          <div style={{ width: 44, height: 1, background: C.line }} />
-          <Flag size={16} color={C.gold} strokeWidth={2.6} />
-          <div style={{ width: 44, height: 1, background: C.line }} />
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <Crest size={92} color={C.goldBright} />
         </div>
         <h1 style={{
-          fontFamily: DISPLAY, fontSize: 34, fontWeight: 700, margin: "20px 0 0",
+          fontFamily: DISPLAY, fontSize: 34, fontWeight: 700, margin: "26px 0 0",
           textTransform: "uppercase", letterSpacing: "0.05em", lineHeight: 1.12, color: C.paper,
         }}>
           {MASTERS.title}
