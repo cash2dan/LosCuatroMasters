@@ -8,6 +8,7 @@ import {
 
 import {
   C, FONT, DISPLAY, MONO, PLAYERS, ROUNDS, EVENT, MASTERS, PORTRAITS,
+  SCORE, SCORE_ORDER, scoreBand, TOPAR_DARK, TOPAR_PAPER,
 } from "./data";
 import { useScores, useMe } from "./useScores";
 import { usePwaUpdate } from "./usePwaUpdate";
@@ -246,7 +247,45 @@ function Pill({ label, on, onClick }) {
 }
 
 const fmtPar = (n) => (n > 0 ? `+${n}` : n === 0 ? "E" : `${n}`);
-const parColor = (n) => (n < 0 ? "#6FBE8F" : n === 0 ? C.paper : C.clay);
+const parColor = (n) => (n < 0 ? TOPAR_DARK.under : n === 0 ? TOPAR_DARK.even : TOPAR_DARK.over);
+const parInk = (n) => (n < 0 ? TOPAR_PAPER.under : n === 0 ? TOPAR_PAPER.even : TOPAR_PAPER.over);
+
+/* Formkonventionen ritad som ram inuti rutan: ring för birdie, dubbel
+   ring för eagle, ruta för bogey, dubbel ruta för dubbel eller sämre.
+   Ramarna ligger absolut placerade så siffran aldrig trängs undan.
+
+   `pad` styr hur nära kanten den yttre ramen går — den ska vara
+   synlig även i rutnätets minsta grad på mobil. */
+function ScoreMark({ shape, ink, pad = 2, radius = 2 }) {
+  if (shape === "none") return null;
+  const round = shape === "circle" || shape === "circle2";
+  const dbl = shape === "circle2" || shape === "square2";
+  const ring = (inset, r) => (
+    <span style={{
+      position: "absolute", top: inset, bottom: inset, left: inset + 1, right: inset + 1,
+      border: `1.2px solid ${ink}`, borderRadius: round ? "50%" : r,
+      opacity: 0.9, pointerEvents: "none",
+    }} />
+  );
+  return <>{ring(pad, radius)}{dbl && ring(pad + 2.6, Math.max(1, radius - 1))}</>;
+}
+
+/* Färgad ruta med siffra och formmarkering — scorekortets grundcell,
+   återanvänd i teckenförklaringen till scoringfördelningen. */
+function ScoreBox({ d, value, height = 24, fontSize = 12, radius = 4, pad = 2 }) {
+  const b = SCORE[scoreBand(d)];
+  return (
+    <div style={{
+      position: "relative", height, display: "flex", alignItems: "center", justifyContent: "center",
+      background: b.c, borderRadius: radius,
+    }}>
+      <ScoreMark shape={b.shape} ink={b.ink} pad={pad} />
+      <span style={{
+        position: "relative", fontFamily: MONO, fontSize, fontWeight: 700, color: b.ink,
+      }}>{value}</span>
+    </div>
+  );
+}
 
 /* =========================================================
    SCHEMA
@@ -1123,13 +1162,20 @@ function Play({
           {round.holes.map((hh, i) => {
             const s = scores[me][i].s;
             const d = s == null ? null : s - hh.par;
+            const b = d == null ? null : SCORE[scoreBand(d)];
+            /* Rutan är för liten för ramar — formen kodas i stället
+               med hörnradien: rund för birdie och bättre, mjukt
+               rundad för par, skarp för bogey och sämre. */
+            const radius = b == null ? 3
+              : b.shape.startsWith("circle") ? "50%"
+              : b.shape === "none" ? 3 : 0;
             return (
               <button key={i} onClick={() => setHole(i)} style={{
-                width: 15, height: 20, borderRadius: 3, border: "none", cursor: "pointer", padding: 0,
-                background: i === hole ? C.gold
-                  : d == null ? "rgba(255,255,255,0.09)"
-                  : d < 0 ? "#6FBE8F" : d === 0 ? "rgba(243,238,221,0.55)" : d === 1 ? "rgba(181,83,60,0.65)" : "rgba(138,46,31,0.8)",
-                fontSize: 8.5, fontWeight: 700, color: i === hole ? C.fairwayDark : "rgba(10,42,33,0.75)",
+                width: 15, height: 20, borderRadius: i === hole ? 3 : radius,
+                border: "none", cursor: "pointer", padding: 0,
+                background: i === hole ? C.gold : b == null ? "rgba(255,255,255,0.09)" : b.c,
+                fontSize: 8.5, fontWeight: 700,
+                color: i === hole ? C.fairwayDark : b == null ? "rgba(10,42,33,0.75)" : b.ink,
                 fontFamily: MONO,
               }}>{i + 1}</button>
             );
@@ -1279,7 +1325,7 @@ function Card({ player, isMe, st, par, onSet, onDone, beers, onBeer, onUndoBeer 
         )}
         <span style={{
           fontFamily: MONO, fontSize: 22, fontWeight: 700, minWidth: 26, textAlign: "center",
-          color: st.s == null ? "#BDB699" : st.s - par < 0 ? C.green : st.s - par === 0 ? C.ink : st.s - par === 1 ? C.clay : "#8A2E1F",
+          color: st.s == null ? "#BDB699" : SCORE[scoreBand(st.s - par)].text,
         }}>
           {st.s ?? "–"}
         </span>
@@ -1293,13 +1339,24 @@ function Card({ player, isMe, st, par, onSet, onDone, beers, onBeer, onUndoBeer 
             {quick.map((v) => {
               const on = st.s === v;
               const d = v - par;
+              const b = SCORE[scoreBand(d)];
               return (
                 <button key={v} onClick={() => { onSet("s", v); setFree(null); }} style={{
                   flex: 1, padding: "11px 0", borderRadius: 10, border: "none", cursor: "pointer",
-                  background: on ? (d < 0 ? C.green : d === 0 ? C.ink : d === 1 ? C.clay : "#8A2E1F") : C.paperDark,
-                  color: on ? C.paper : C.muted, fontSize: 12, fontWeight: 800, lineHeight: 1.3,
+                  background: on ? b.c : C.paperDark,
+                  color: on ? b.ink : C.muted, fontSize: 12, fontWeight: 800, lineHeight: 1.3,
+                  /* Par-bandet är pappersfärgat och skulle försvinna mot
+                     kortet — markeringen av vald knapp ligger därför i
+                     konturen, lika för alla band. */
+                  boxShadow: on ? `0 0 0 2px ${b.ink}` : "none",
                 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 15 }}>{v}</div>
+                  <div style={{
+                    position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    minWidth: 24, height: 20, fontFamily: MONO, fontSize: 15,
+                  }}>
+                    {on && <ScoreMark shape={b.shape} ink={b.ink} pad={0} radius={3} />}
+                    <span style={{ position: "relative" }}>{v}</span>
+                  </div>
                   <div style={{ fontSize: 9, opacity: 0.85, marginTop: 1 }}>{scoreLabel(d)}</div>
                 </button>
               );
@@ -1553,7 +1610,11 @@ function roundStat(round, holesArr) {
    ========================================================= */
 
 /* Brutto, alltid. Hoppar man över ett hål räknas det inte alls —
-   varken i par-summan eller i snitten. */
+   varken i par-summan eller i snitten.
+
+   Allt som kan sakna underlag returneras som `null`, aldrig som 0.
+   Sammanställningen ritar `null` som streck: noll greenträffar och
+   "ingen har fyllt i green" är inte samma sak. */
 function cardStats(round, holes) {
   const hs = holes.map((h, i) => ({ ...round.holes[i], ...h }));
   const played = hs.filter((h) => h.s != null);
@@ -1562,18 +1623,21 @@ function cardStats(round, holes) {
     const pl = arr.filter((h) => h.s != null);
     if (!pl.length) return null;
     const strokes = pl.reduce((s, h) => s + h.s, 0);
-    return { strokes, toPar: strokes - pl.reduce((s, h) => s + h.par, 0), played: pl.length };
+    return { strokes, toPar: strokes - pl.reduce((s, h) => s + h.par, 0) };
   };
 
   const girHoles = hs.filter((h) => h.gir === true);
   const fwApplicable = hs.filter((h) => h.par !== 3);
   const fwHoles = fwApplicable.filter((h) => h.fw === true);
   const puttHoles = hs.filter((h) => h.p != null);
-  const puttsOnGir = hs.filter((h) => h.gir === true && h.p != null);
 
-  /* Räddningslägen: spelade hål utan ibockad green. */
-  const scrOpp = played.filter((h) => h.gir !== true);
-  const scrOk = scrOpp.filter((h) => h.s - h.par <= 0);
+  /* Andel: null när det inte finns några tillfällen alls. */
+  const share = (ok, of) => (of ? { ok, of } : null);
+
+  const puttsOnGir = hs.filter((h) => h.gir === true && h.p != null);
+  const girPlayed = girHoles.filter((h) => h.s != null);
+  const fwPlayed = fwHoles.filter((h) => h.s != null);
+  const missed = played.filter((h) => h.gir !== true);
 
   const dist = { eagle: 0, birdie: 0, par: 0, bogey: 0, double: 0 };
   played.forEach((h) => {
@@ -1585,69 +1649,51 @@ function cardStats(round, holes) {
     else dist.double++;
   });
 
-  /* Svåra mot lätta: de nio med lägst hålindex mot de nio med högst.
-     Snittet räknas bara på spelade hål i respektive grupp. */
-  const bySi = [...hs].sort((a, b) => a.si - b.si);
-  const avgOver = (arr) => {
-    const pl = arr.filter((h) => h.s != null);
-    return pl.length ? pl.reduce((s, h) => s + (h.s - h.par), 0) / pl.length : null;
-  };
-
-  const sorted = [...played].sort((a, b) => (a.s - a.par) - (b.s - b.par));
-
   return {
     played: played.length,
-    strokes: played.reduce((s, h) => s + h.s, 0),
-    toPar: played.reduce((s, h) => s + (h.s - h.par), 0),
+    total: played.length ? {
+      strokes: played.reduce((s, h) => s + h.s, 0),
+      toPar: played.reduce((s, h) => s + (h.s - h.par), 0),
+    } : null,
     out: half(hs.slice(0, 9)),
     in: half(hs.slice(9)),
     parOut: hs.slice(0, 9).reduce((s, h) => s + h.par, 0),
     parIn: hs.slice(9).reduce((s, h) => s + h.par, 0),
 
-    hasGir: hs.some((h) => h.gir != null),
-    gir: girHoles.length,
-    hasFw: fwApplicable.some((h) => h.fw != null),
-    fw: fwHoles.length,
-    fwOf: fwApplicable.length,
-    hasPutts: puttHoles.length > 0,
-    putts: puttHoles.reduce((s, h) => s + h.p, 0),
-    puttHoles: puttHoles.length,
-
-    puttsPerGir: puttsOnGir.length
-      ? puttsOnGir.reduce((s, h) => s + h.p, 0) / puttsOnGir.length
+    gir: hs.some((h) => h.gir != null) ? share(girHoles.length, 18) : null,
+    fw: fwApplicable.some((h) => h.fw != null) ? share(fwHoles.length, fwApplicable.length) : null,
+    putts: puttHoles.length
+      ? { total: puttHoles.reduce((s, h) => s + h.p, 0), holes: puttHoles.length }
       : null,
-    puttsPerGirN: puttsOnGir.length,
-    scrOpp: scrOpp.length,
-    scrOk: scrOk.length,
+
+    /* Fördjupningens fyra mått. */
+    puttsPerGir: puttsOnGir.length
+      ? { avg: puttsOnGir.reduce((s, h) => s + h.p, 0) / puttsOnGir.length, holes: puttsOnGir.length }
+      : null,
+    girSaved: share(girPlayed.filter((h) => h.s - h.par <= 0).length, girPlayed.length),
+    fwSaved: share(fwPlayed.filter((h) => h.s - h.par <= 0).length, fwPlayed.length),
+    scrambling: hs.some((h) => h.gir != null)
+      ? share(missed.filter((h) => h.s - h.par <= 0).length, missed.length)
+      : null,
 
     dist,
-    best: sorted[0] || null,
-    worst: sorted[sorted.length - 1] || null,
-    hard: avgOver(bySi.slice(0, 9)),
-    easy: avgOver(bySi.slice(9)),
   };
 }
 
-/* Samma skala som snabbknapparna på Spela och hålremsan. */
-function scoreChip(d) {
-  if (d <= -2) return { bg: C.goldBright, fg: C.fairwayDark };
-  if (d === -1) return { bg: C.green, fg: C.paper };
-  if (d === 0) return { bg: C.paper, fg: C.ink };
-  if (d === 1) return { bg: C.clay, fg: C.paper };
-  return { bg: "#8A2E1F", fg: C.paper };
-}
-
-const DIST_ROWS = [
-  { k: "eagle", t: "Eagle eller bättre", c: C.goldBright },
-  { k: "birdie", t: "Birdie", c: C.green },
-  { k: "par", t: "Par", c: C.paper },
-  { k: "bogey", t: "Bogey", c: C.clay },
-  { k: "double", t: "Dubbel eller sämre", c: "#8A2E1F" },
-];
+/* Exempelsiffror till teckenförklaringen: formen ska synas, inte
+   siffran i sig. */
+const DIST_ROWS = SCORE_ORDER.map((k, i) => ({
+  k, t: SCORE[k].t, c: SCORE[k].c, d: [-2, -1, 0, 1, 2][i],
+}));
 
 /* Ett niohålsblock. Rutnätet är en grid så att alla sju raderna
-   ligger i lod — hålkolumnerna delar bredden lika. */
-function CardNine({ title, holes, hs, show }) {
+   ligger i lod — hålkolumnerna delar bredden lika.
+
+   GIR, fairway och puttar ritas alltid, även när ingenting är
+   ifyllt. Ett tomt hål får streck, och saknas hela raden i blocket
+   får summan streck den med. Att dölja raden skulle se ut som att
+   måttet inte finns; strecket säger att det inte är inrapporterat. */
+function CardNine({ title, holes, hs }) {
   const cell = {
     display: "flex", alignItems: "center", justifyContent: "center",
     height: 24, fontFamily: MONO, fontSize: 11,
@@ -1657,11 +1703,13 @@ function CardNine({ title, holes, hs, show }) {
     fontSize: 9.5, fontWeight: 800, color: C.mutedGreen,
     textTransform: "uppercase", letterSpacing: "0.07em",
   };
+  const blank = <span style={{ color: "rgba(243,238,221,0.3)" }}>–</span>;
+  const sumCell = { ...cell, color: C.mutedGreen, fontWeight: 700 };
 
-  const sum = (fn) => hs.reduce((s, h) => s + (fn(h) || 0), 0);
   const anyScore = hs.some((h) => h.s != null);
-
-  const row = (key, node) => <div key={key} style={cell}>{node}</div>;
+  const anyGir = hs.some((h) => h.gir != null);
+  const anyFw = hs.some((h) => h.par !== 3 && h.fw != null);
+  const anyPutt = hs.some((h) => h.p != null);
 
   return (
     <div style={{
@@ -1693,63 +1741,52 @@ function CardNine({ title, holes, hs, show }) {
 
       {/* Resultat */}
       <div style={{ ...label, color: C.paper }}>Res</div>
-      {hs.map((h, i) => {
-        if (h.s == null) {
-          return (
-            <div key={i} style={{
-              ...cell, color: "rgba(243,238,221,0.25)",
+      {hs.map((h, i) => (
+        h.s == null
+          ? <div key={i} style={{
+              ...cell, color: "rgba(243,238,221,0.3)",
               background: "rgba(255,255,255,0.04)", borderRadius: 4,
             }}>–</div>
-          );
-        }
-        const c = scoreChip(h.s - h.par);
-        return (
-          <div key={i} style={{
-            ...cell, background: c.bg, color: c.fg, borderRadius: 4, fontWeight: 700, fontSize: 12,
-          }}>{h.s}</div>
-        );
-      })}
+          : <ScoreBox key={i} d={h.s - h.par} value={h.s} height={24} fontSize={11.5} />
+      ))}
       <div style={{ ...cell, color: C.paper, fontWeight: 700 }}>
-        {anyScore ? sum((h) => h.s) : "–"}
+        {anyScore ? hs.reduce((s, h) => s + (h.s || 0), 0) : blank}
       </div>
 
-      {show.gir && (
-        <>
-          <div style={label}>GIR</div>
-          {hs.map((h, i) => row("g" + i, h.gir === true
-            ? <Check size={12} color="#6FBE8F" strokeWidth={3.4} />
-            : <span style={{ color: "rgba(243,238,221,0.18)" }}>·</span>))}
-          <div style={{ ...cell, color: C.mutedGreen, fontWeight: 700 }}>
-            {hs.filter((h) => h.gir === true).length}
-          </div>
-        </>
-      )}
+      {/* GIR */}
+      <div style={label}>GIR</div>
+      {hs.map((h, i) => (
+        <div key={"g" + i} style={cell}>
+          {h.gir === true ? <Check size={12} color="#6FBE8F" strokeWidth={3.4} /> : blank}
+        </div>
+      ))}
+      <div style={sumCell}>{anyGir ? hs.filter((h) => h.gir === true).length : blank}</div>
 
-      {show.fw && (
-        <>
-          <div style={label}>Fway</div>
-          {hs.map((h, i) => row("f" + i, h.par === 3
+      {/* Fairway — måttet finns inte på par 3 */}
+      <div style={label}>Fway</div>
+      {hs.map((h, i) => (
+        <div key={"f" + i} style={cell}>
+          {h.par === 3
             ? <span style={{ color: C.dim }}>—</span>
             : h.fw === true
               ? <Check size={12} color="#6FBE8F" strokeWidth={3.4} />
-              : <span style={{ color: "rgba(243,238,221,0.18)" }}>·</span>))}
-          <div style={{ ...cell, color: C.mutedGreen, fontWeight: 700 }}>
-            {hs.filter((h) => h.par !== 3 && h.fw === true).length}
-          </div>
-        </>
-      )}
+              : blank}
+        </div>
+      ))}
+      <div style={sumCell}>
+        {anyFw ? hs.filter((h) => h.par !== 3 && h.fw === true).length : blank}
+      </div>
 
-      {show.putts && (
-        <>
-          <div style={label}>Puttar</div>
-          {hs.map((h, i) => row("p" + i, h.p != null
-            ? <span style={{ color: C.mutedGreen }}>{h.p}</span>
-            : <span style={{ color: "rgba(243,238,221,0.18)" }}>·</span>))}
-          <div style={{ ...cell, color: C.mutedGreen, fontWeight: 700 }}>
-            {sum((h) => h.p)}
-          </div>
-        </>
-      )}
+      {/* Puttar */}
+      <div style={label}>Puttar</div>
+      {hs.map((h, i) => (
+        <div key={"p" + i} style={cell}>
+          {h.p != null ? <span style={{ color: C.mutedGreen }}>{h.p}</span> : blank}
+        </div>
+      ))}
+      <div style={sumCell}>
+        {anyPutt ? hs.reduce((s, h) => s + (h.p || 0), 0) : blank}
+      </div>
     </div>
   );
 }
@@ -1776,23 +1813,40 @@ function StatHead({ children }) {
   );
 }
 
-/* Scoringfördelningen som en vågrät stapel i resultatradens färger,
-   med en teckenförklaring under för de kategorier som förekommer. */
+/* Scoringfördelningen som en vågrät stapel i resultatradens färger.
+   Varje segments bredd är antalet hål, och antalet står i segmentet.
+   Teckenförklaringen visar formkonventionen, så stapeln går att läsa
+   som samma information som resultatraden — bara sammanfattad. */
 function DistBar({ dist, played }) {
-  if (!played) return null;
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", gap: 1 }}>
+      <div style={{
+        display: "flex", height: 22, borderRadius: 6, overflow: "hidden", gap: 1,
+        background: "rgba(255,255,255,0.04)",
+      }}>
         {DIST_ROWS.filter((d) => dist[d.k] > 0).map((d) => (
-          <div key={d.k} style={{ flex: dist[d.k], background: d.c }} />
+          <div key={d.k} style={{
+            flex: dist[d.k], minWidth: 0, background: d.c,
+            display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+          }}>
+            <span style={{
+              fontFamily: MONO, fontSize: 10.5, fontWeight: 700,
+              color: SCORE[d.k].ink,
+            }}>{dist[d.k]}</span>
+          </div>
         ))}
       </div>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 10 }}>
-        {DIST_ROWS.filter((d) => dist[d.k] > 0).map((d) => (
-          <div key={d.k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: d.c, flexShrink: 0 }} />
+        {DIST_ROWS.map((d) => (
+          <div key={d.k} style={{ display: "flex", alignItems: "center", gap: 6, opacity: dist[d.k] ? 1 : 0.45 }}>
+            <span style={{ width: 18, flexShrink: 0 }}>
+              <ScoreBox d={d.d} value="" height={16} fontSize={9} radius={3} pad={1.5} />
+            </span>
             <span style={{ fontSize: 11.5, color: C.mutedGreen }}>{d.t}</span>
-            <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, color: C.paper }}>{dist[d.k]}</span>
+            <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, color: C.paper }}>
+              {played ? dist[d.k] : "–"}
+            </span>
           </div>
         ))}
       </div>
@@ -1800,9 +1854,12 @@ function DistBar({ dist, played }) {
   );
 }
 
-const one = (n) => n.toFixed(1).replace(".", ",");
 const two = (n) => n.toFixed(2).replace(".", ",");
-const pct = (n, of) => `${Math.round((n / of) * 100)} %`;
+
+/* Streck, inte noll, när underlaget saknas. */
+const DASH = "–";
+const share = (x) => (x ? `${x.ok} av ${x.of}` : DASH);
+const sharePct = (x) => (x ? `${Math.round((x.ok / x.of) * 100)} %` : DASH);
 
 function Scorecard({ scores, playerId, roundId, onPickPlayer, onPickRound, onBack }) {
   const round = ROUNDS.find((r) => r.id === roundId);
@@ -1811,9 +1868,6 @@ function Scorecard({ scores, playerId, roundId, onPickPlayer, onPickRound, onBac
 
   const st = useMemo(() => cardStats(round, holes), [round, holes]);
   const hs = holes.map((h, i) => ({ ...round.holes[i], ...h }));
-
-  /* Rader utan underlag ritas inte alls — tomma bockar säger inget. */
-  const show = { gir: st.hasGir, fw: st.hasFw, putts: st.hasPutts };
 
   return (
     <div style={{ padding: "18px 16px 60px" }}>
@@ -1861,8 +1915,8 @@ function Scorecard({ scores, playerId, roundId, onPickPlayer, onPickRound, onBac
         background: "rgba(255,255,255,0.04)", border: `1px solid ${C.line}`,
         borderRadius: 14, padding: "12px 10px 4px",
       }}>
-        <CardNine title="Ut" holes={round.holes.slice(0, 9)} hs={hs.slice(0, 9)} show={show} />
-        <CardNine title="In" holes={round.holes.slice(9)} hs={hs.slice(9)} show={show} />
+        <CardNine title="Ut" holes={round.holes.slice(0, 9)} hs={hs.slice(0, 9)} />
+        <CardNine title="In" holes={round.holes.slice(9)} hs={hs.slice(9)} />
 
         <div style={{
           display: "flex", gap: 8, padding: "11px 2px 12px", borderTop: `1px solid ${C.line}`,
@@ -1870,7 +1924,7 @@ function Scorecard({ scores, playerId, roundId, onPickPlayer, onPickRound, onBac
           {[
             { k: "Ut", v: st.out, par: st.parOut },
             { k: "In", v: st.in, par: st.parIn },
-            { k: "Totalt", v: st.played ? { strokes: st.strokes, toPar: st.toPar } : null, par: st.parOut + st.parIn },
+            { k: "Totalt", v: st.total, par: st.parOut + st.parIn },
           ].map((x) => (
             <div key={x.k} style={{ flex: 1, textAlign: "center" }}>
               <div style={{
@@ -1888,45 +1942,32 @@ function Scorecard({ scores, playerId, roundId, onPickPlayer, onPickRound, onBac
         </div>
       </div>
 
-      {!st.played && <div style={{ marginTop: 16 }}><Empty text="Inga slag inrapporterade för den här rundan än." /></div>}
+      {/* Alla rader ritas alltid, med streck när underlaget saknas.
+          Ingen rad försvinner för att den är tom. */}
+      <StatHead>Grunddata</StatHead>
+      <StatRow k="Score" v={st.total ? st.total.strokes : DASH} sub={st.total ? fmtPar(st.total.toPar) : DASH} />
+      <StatRow k="Ut" v={st.out ? st.out.strokes : DASH} sub={st.out ? fmtPar(st.out.toPar) : DASH} />
+      <StatRow k="In" v={st.in ? st.in.strokes : DASH} sub={st.in ? fmtPar(st.in.toPar) : DASH} />
+      <StatRow k="Greens in regulation" v={share(st.gir)} sub={sharePct(st.gir)} />
+      <StatRow k="Fairwayträffar" v={share(st.fw)} sub={sharePct(st.fw)} />
+      <StatRow
+        k="Puttar"
+        v={st.putts ? st.putts.total : DASH}
+        sub={st.putts ? `${two(st.putts.total / st.putts.holes)}/hål` : DASH}
+      />
 
-      {st.played > 0 && (
-        <>
-          <StatHead>Grunddata</StatHead>
-          <StatRow k="Score" v={st.strokes} sub={fmtPar(st.toPar)} />
-          {st.out && <StatRow k="Ut" v={st.out.strokes} sub={fmtPar(st.out.toPar)} />}
-          {st.in && <StatRow k="In" v={st.in.strokes} sub={fmtPar(st.in.toPar)} />}
-          {st.played < 18 && <StatRow k="Spelade hål" v={`${st.played} av 18`} />}
-          {st.hasGir && <StatRow k="Greens in regulation" v={`${st.gir} av 18`} sub={pct(st.gir, 18)} />}
-          {st.hasFw && <StatRow k="Fairwayträffar" v={`${st.fw} av ${st.fwOf}`} sub={pct(st.fw, st.fwOf)} />}
-          {st.hasPutts && (
-            <StatRow k="Puttar" v={st.putts} sub={`${two(st.putts / st.puttHoles)}/hål`} />
-          )}
+      <StatHead>Scoringfördelning</StatHead>
+      <DistBar dist={st.dist} played={st.played} />
 
-          <StatHead>Fördjupning</StatHead>
-          {st.puttsPerGir != null && (
-            <StatRow k={`Puttar per träffad green (${st.puttsPerGirN} hål)`} v={two(st.puttsPerGir)} />
-          )}
-          {st.hasGir && st.scrOpp > 0 && (
-            <StatRow k="Scrambling" v={`${st.scrOk} av ${st.scrOpp}`} sub={pct(st.scrOk, st.scrOpp)} />
-          )}
-          {st.best && (
-            <StatRow k={`Bästa hål (${st.best.hole})`} v={`${st.best.s} på par ${st.best.par}`} sub={fmtPar(st.best.s - st.best.par)} />
-          )}
-          {st.worst && st.worst !== st.best && (
-            <StatRow k={`Sämsta hål (${st.worst.hole})`} v={`${st.worst.s} på par ${st.worst.par}`} sub={fmtPar(st.worst.s - st.worst.par)} />
-          )}
-          {st.hard != null && st.easy != null && (
-            <>
-              <StatRow k="Snitt på de nio svåraste (index 1–9)" v={one(st.hard)} />
-              <StatRow k="Snitt på de nio lättaste (index 10–18)" v={one(st.easy)} />
-            </>
-          )}
-
-          <StatHead>Scoringfördelning</StatHead>
-          <DistBar dist={st.dist} played={st.played} />
-        </>
-      )}
+      <StatHead>Fördjupning</StatHead>
+      <StatRow
+        k="Puttar per träffad green"
+        v={st.puttsPerGir ? two(st.puttsPerGir.avg) : DASH}
+        sub={st.puttsPerGir ? `${st.puttsPerGir.holes} hål` : DASH}
+      />
+      <StatRow k="Par eller bättre vid GIR" v={share(st.girSaved)} sub={sharePct(st.girSaved)} />
+      <StatRow k="Par eller bättre vid fairwayträff" v={share(st.fwSaved)} sub={sharePct(st.fwSaved)} />
+      <StatRow k="Räddade par" v={share(st.scrambling)} sub={sharePct(st.scrambling)} />
     </div>
   );
 }
@@ -2060,7 +2101,7 @@ function Row({ r, pos, lead, isMe, showPer, onOpen }) {
         <div style={{ textAlign: "right" }}>
           <div style={{
             fontFamily: MONO, fontSize: 15, fontWeight: 700,
-            color: r.played ? (r.toPar < 0 ? C.green : r.toPar === 0 ? C.ink : C.clay) : C.muted,
+            color: r.played ? parInk(r.toPar) : C.muted,
           }}>
             {r.played ? fmtPar(r.toPar) : "–"}
           </div>
@@ -2078,7 +2119,7 @@ function Row({ r, pos, lead, isMe, showPer, onOpen }) {
               <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{x.short}</div>
               <div style={{
                 fontFamily: MONO, fontSize: 12, fontWeight: 700, marginTop: 1,
-                color: !x.played ? "#BDB699" : x.toPar < 0 ? C.green : x.toPar === 0 ? C.ink : C.clay,
+                color: !x.played ? "#BDB699" : parInk(x.toPar),
               }}>
                 {x.played ? fmtPar(x.toPar) : "–"}
               </div>
@@ -2415,9 +2456,30 @@ function Rules() {
 
 const BeerIcon = () => <span style={{ fontSize: 17, lineHeight: 1 }}>🍺</span>;
 
-/* Färg på trenden: nedåt är bra, uppåt är dyrt, platt är platt. */
+/* Färg på trenden: nedåt är bra, uppåt är dyrt, platt är platt.
+   Samma blå–bärnstensaxel som scoreskalan, inte grönt mot rött. */
 const slopeColor = (slope, flat = C.muted) =>
-  slope == null || Math.abs(slope) < 0.005 ? flat : slope < 0 ? C.green : C.clay;
+  slope == null || Math.abs(slope) < 0.005 ? flat : slope < 0 ? TOPAR_PAPER.under : TOPAR_PAPER.over;
+
+/* Streckmönster per spelare, i PLAYERS-ordning. Linjerna går att
+   följa i grafen även helt utan färg. */
+export const LINE_DASH = ["", "7 4", "1.5 4", "9 3 2 3"];
+const dashFor = (id) => LINE_DASH[PLAYERS.findIndex((p) => p.id === id)] || "";
+
+/* Teckenförklaringens nyckel ritar spelarens faktiska linje —
+   färg plus streckmönster — så den går att para ihop med grafen
+   även utan färgseende. */
+function LineKey({ id, color }) {
+  return (
+    <svg width="22" height="9" style={{ flexShrink: 0, overflow: "visible" }} aria-hidden="true">
+      <line
+        x1="0" y1="4.5" x2="22" y2="4.5"
+        stroke={color} strokeWidth="2.4" strokeLinecap="round"
+        strokeDasharray={dashFor(id) || undefined}
+      />
+    </svg>
+  );
+}
 
 function BeerCurve({ scores, beers }) {
   const [view, setView] = useState("all");
@@ -2450,7 +2512,7 @@ function BeerCurve({ scores, beers }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 11, justifyContent: "center" }}>
             {played.map((c) => (
               <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 9, height: 9, borderRadius: "50%", background: c.color }} />
+                <LineKey id={c.id} color={c.color} />
                 <span style={{ fontSize: 11.5, color: C.paper, fontWeight: 600 }}>{c.name}</span>
               </div>
             ))}
@@ -2466,7 +2528,7 @@ function BeerCurve({ scores, beers }) {
                 display: "flex", alignItems: "center", gap: 10,
                 background: C.paper, borderRadius: 12, padding: "11px 13px",
               }}>
-                <span style={{ width: 9, height: 9, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                <LineKey id={c.id} color={c.color} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 13.5, color: C.ink }}>{c.name}</div>
                   <div style={{ fontSize: 10.5, color: C.muted, marginTop: 1 }}>
@@ -2559,6 +2621,7 @@ function BeerChart({ curves }) {
           c.points.length > 1 ? (
             <polyline
               key={`l${c.id}`} fill="none" stroke={c.color} strokeWidth="2"
+              strokeDasharray={dashFor(c.id) || undefined}
               strokeLinejoin="round" strokeLinecap="round" opacity="0.9"
               points={c.points.map((p) => `${x(p.level)},${y(p.avg)}`).join(" ")}
             />

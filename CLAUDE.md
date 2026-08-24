@@ -126,6 +126,80 @@ lockupen ner sig till två rader bredvid vapnet. Det är avsiktligt och
 ser bra ut; att krympa vapnet räddar det inte, eftersom det är titeln
 som tar plats.
 
+## Scoreskalan — dubbelkodad
+
+**All färgkodning av score mot par går genom `SCORE` i `data.js`.**
+Hårdkoda aldrig en färg utifrån skillnaden mot par någon annanstans.
+
+Skalan är dubbelkodad för att fungera vid rödgrön färgblindhet:
+
+| Band | Färg | Form |
+|---|---|---|
+| Eagle eller bättre | Guld `#E4C13D` | dubbel ring |
+| Birdie | Ljusblå `#6FA8DC` | ring |
+| Par | Papper `#F3EEDD` | ingen |
+| Bogey | Bärnsten `#D98A3D` | ruta |
+| Dubbel eller sämre | Mörk rost `#7A3520` | dubbel ruta |
+
+Färgen ligger på blå–bärnstensaxeln i stället för grön–röd, och
+formen är golfens egen konvention på resultatsiffran. Båda bär samma
+information, så inget går förlorat om färgen inte uppfattas.
+
+**Ingen grön ton får signalera score.** Fairwaygrönt är bakgrund,
+och grönt i bockar och statusprickar är binära lägen med egen text
+eller symbol — det är en annan sak.
+
+Guld och bärnsten skiljer sig i ljushet (relativ luminans ≈ 0,55 mot
+0,34) och har dessutom olika form, så de går att hålla isär även när
+kulören inte gör jobbet.
+
+`scoreBand(d)` ger bandets nyckel. `SCORE[band].ink` är siffrans färg
+på den fyllda rutan, `.text` samma sak när siffran står som ren text
+mot papper. `ScoreBox` ritar en färdig ruta med siffra och form,
+`ScoreMark` bara ramarna. Summor mot par är inte hål och får ingen
+form — de använder `TOPAR_DARK` respektive `TOPAR_PAPER`.
+
+Två ställen kan inte rita ramar och kodar formen på annat sätt:
+
+- **Hålremsan på Spela** är 15 px bred. Där ligger formen i
+  hörnradien: rund för birdie och bättre, mjukt rundad för par,
+  skarp för bogey och sämre.
+- **Snabbknapparna i spelarkortet** har redan ordet ("Birdie",
+  "Bogey") under siffran. De får ramen runt siffran när de är valda,
+  och en mörk kontur som markerar valet — par-bandet är pappersfärgat
+  och skulle annars försvinna mot kortet.
+
+Dream 18 färgkodar inte mot par och berörs inte: samma hålnummer har
+olika par på Santana och Aloha, så skillnaden mot par är inte
+definierad där.
+
+## Spelarfärgerna
+
+En ljushetstrappa, vald för att fungera vid rödgrön färgblindhet:
+
+| Spelare | Färg | |
+|---|---|---|
+| Jonsson | `#E4C13D` Guld | varm, ljus |
+| Per | `#B4652A` Bränd rost | varm, mörk |
+| Johansson | `#7FB8E3` Ljus himmelsblå | kall, ljus |
+| Lars | `#3C6FB0` Djupblå | kall, mörk |
+
+Paren skiljs på **ljushet**, inte kulör: vid deuteranopi läses de som
+ljus gul, mörk gulbrun, ljusblå och mörkblå. De tidigare färgerna
+salviagrön och terrakotta hamnade båda på en dov gulgrå ton och gick
+inte att skilja åt i en 9 px prick.
+
+Byts någon färg ut måste den fungera **både** mot fairwaygrönt och
+mot pappersfärgade kort — prickarna används på båda underlagen. Det
+utesluter såväl mycket ljusa som mycket mörka toner, och är skälet
+att paletten ligger i mellanregistret.
+
+I Ölkurvan skiljs spelarnas linjer dessutom åt med streckmönster
+(`LINE_DASH`, i PLAYERS-ordning: heldragen, streckad, prickad,
+streckprickad). `LineKey` ritar samma mönster i teckenförklaringen
+och i trendlistan, så linjerna går att para ihop med grafen utan
+färgseende.
+
 ## Scorekortet
 
 Per spelare och runda, nås **bara genom att trycka på en rad i

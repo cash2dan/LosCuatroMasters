@@ -29,6 +29,41 @@ export const C = {
   dim: "#5C7268",
 };
 
+/* ---------- Scoreskalan mot par ----------
+
+   Dubbelkodad, för att fungera vid rödgrön färgblindhet:
+
+   1. Färgen ligger på blå–bärnstensaxeln i stället för grön–röd.
+      Ingen grön ton får användas för att signalera score — appens
+      fairwaygröna bakgrund är en annan sak.
+   2. `shape` är golfens egen formkonvention på resultatsiffran:
+      ring = birdie, dubbel ring = eagle, ruta = bogey, dubbel ruta =
+      dubbel eller sämre, par omarkerat.
+
+   Båda bär samma information, så inget går förlorat om färgen inte
+   uppfattas. Läggs ny scorekodning till någonstans ska den hämtas
+   härifrån — inte hårdkodas.
+
+   `ink` är siffrans färg på den fyllda rutan, `text` samma sak när
+   siffran står som ren text på pappersbotten. */
+export const SCORE = {
+  eagle:  { t: "Eagle eller bättre", c: "#E4C13D", ink: "#0A2A21", text: "#8F7310", shape: "circle2" },
+  birdie: { t: "Birdie",             c: "#6FA8DC", ink: "#0A2A21", text: "#2F6FAF", shape: "circle" },
+  par:    { t: "Par",                c: "#F3EEDD", ink: "#16281F", text: "#16281F", shape: "none" },
+  bogey:  { t: "Bogey",              c: "#D98A3D", ink: "#0A2A21", text: "#A05C15", shape: "square" },
+  double: { t: "Dubbel eller sämre", c: "#7A3520", ink: "#F3EEDD", text: "#7A3520", shape: "square2" },
+};
+
+export const SCORE_ORDER = ["eagle", "birdie", "par", "bogey", "double"];
+
+export const scoreBand = (d) =>
+  d <= -2 ? "eagle" : d === -1 ? "birdie" : d === 0 ? "par" : d === 1 ? "bogey" : "double";
+
+/* Summor mot par är inte hål och får ingen form — bara skalans
+   ytterfärger. En uppsättning för mörk botten, en för papper. */
+export const TOPAR_DARK = { under: "#6FA8DC", even: "#F3EEDD", over: "#D98A3D" };
+export const TOPAR_PAPER = { under: "#2F6FAF", even: "#16281F", over: "#A05C15" };
+
 export const FONT = "'Inter', system-ui, -apple-system, sans-serif";
 export const DISPLAY = "'Oswald', 'Arial Narrow', sans-serif";
 export const MONO = "'Space Mono', ui-monospace, monospace";
@@ -43,11 +78,20 @@ export const EVENT = {
   dates: "11–13 sep",
 };
 
+/* Ljushetstrappa: två varma och två kalla toner, parvis åtskilda i
+   ljushet. Vid rödgrön färgblindhet läses de som ljus gul, mörk
+   gulbrun, ljusblå och mörkblå — fyra tydliga steg. Salviagrön och
+   terrakotta låg tidigare båda på en dov gulgrå ton och gick inte
+   att skilja åt i en 9 px prick.
+
+   Alla fyra måste synas både mot fairwaygrönt och mot pappersfärgade
+   kort, vilket utesluter såväl mycket ljusa som mycket mörka toner.
+   I Ölkurvan kompletteras färgen med streckmönster, se LINE_DASH. */
 export const PLAYERS = [
   { id: "jonsson", name: "Jonsson", color: "#E4C13D" },
-  { id: "johansson", name: "Johansson", color: "#7FA88C" },
-  { id: "per", name: "Per", color: "#C97B5A" },
-  { id: "lars", name: "Lars", color: "#8AA9C9" },
+  { id: "johansson", name: "Johansson", color: "#7FB8E3" },
+  { id: "per", name: "Per", color: "#B4652A" },
+  { id: "lars", name: "Lars", color: "#3C6FB0" },
 ];
 
 /* ---------- Baninledningar ---------- */
