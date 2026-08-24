@@ -30,6 +30,56 @@ firestore.rules     Säkerhetsregler — klistras in i Firebase-konsolen
 vite.config.js      base-path för GitHub Pages, PWA-konfig, ikon-taggar
 ```
 
+## Banguiden och hålen
+
+Hålen i `SANTANA` och `ALOHA` har utöver `hole`, `par` och `m` tre
+fält till:
+
+- `note` — kort beskrivning av hålet. Finns på alla 36 hålen.
+- `si` — hålindex (stroke index) 1–18. Finns på alla 36.
+- `name` — hålets namn. **Bara Aloha**, som namngett varje hål;
+  Santana har inga. `Nine` och `Play` ritar bara ut namnet när det är
+  satt, så fältet får saknas.
+
+Allt byggs av `mkHoles(rows, notes, si, names)` från arrayerna
+`SANTANA_NOTES`, `ALOHA_NOTES`, `SANTANA_SI`, `ALOHA_SI` och
+`ALOHA_NAMES` i `data.js` — index är hålnummer − 1. Beskrivningarna
+utgår från de bakre teerna, samma som meteruppgifterna.
+
+Indexserierna är verifierade mot klubbens spelarguide respektive
+bandata och är kompletta permutationer av 1–18 (Santana udda ut och
+jämna in, Aloha tvärtom). Räkna inte om dem.
+
+Baninledningarna ligger i `SANTANA_INTRO` och `ALOHA_INTRO`
+(`{ title, sub, body: [...] }`) och hängs på rundorna via `intro`.
+Lördagen och söndagen pekar båda på `ALOHA_INTRO` — samma bana, samma
+text.
+
+Tre vyer använder datan:
+
+- `CourseIntro` ritar inledningen överst i Banguiden, ovanför
+  håltabellen.
+- `HoleRow` är en rad i tabellen. Par, index och meter syns alltid.
+  Beskrivningen styrs av **en växlare för hela banan**, inte per hål
+  — enskilda rader går inte att öppna. Utfällningen animeras med
+  `grid-template-rows: 0fr → 1fr` i stället för `max-height`, så
+  höjden inte behöver gissas; webbläsare som inte interpolerar
+  fr-enheter hoppar direkt i stället, vilket duger.
+- `useGuideNotes` håller växlarens läge i
+  `loscuatro-guidenotes-v1`. Det är **dolt** som standard, gäller
+  alla tre rundorna och överlever omladdning.
+- `Play` visar hålnamnet under hålnumret och beskrivningen bakom
+  "Om hålet". Den är hopfälld som standard så scoreinmatningen inte
+  trycks ner, och valet följer med mellan hålen: öppnar man en gång
+  står den öppen rundan ut.
+
+Kolumnbredderna i `Nine` (par 34, index 36, meter 50) måste hållas i
+synk mellan rubrikraden, hålraderna och Totalt-raden, annars glider
+tabellen isär. De fyra kolumnerna ryms ner till 320 px; där får
+namnkolumnen omkring 118 px, så bara Alohas längsta namn
+("Miguel Ángel Jiménez") kapas med ellips. Krymps kolumnerna mer
+blir siffrorna trångbodda i stället.
+
 ## Flikar
 
 Schema · Banguide · Spela · Leaderboard · Dream 18 · **Ölkurvan** ·

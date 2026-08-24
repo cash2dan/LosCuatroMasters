@@ -3,7 +3,7 @@ import {
   Trophy, Flag, Target, Circle, TrendingUp, Activity, Zap, Wind, Award,
   Plus, Minus, ChevronLeft, ChevronRight, Users, Calendar, MapPin, Star,
   Check, User, ExternalLink, ChevronDown, BookOpen, AlertTriangle,
-  Undo2, X, RefreshCw, Coffee,
+  Undo2, X, RefreshCw, Coffee, Book,
 } from "lucide-react";
 
 import {
@@ -484,8 +484,24 @@ function Fact({ k, v }) {
    BANGUIDE
    ========================================================= */
 
+/* Växlarens läge gäller alla tre rundorna och överlever omladdning —
+   den som läser igenom banorna slipper trycka om för varje dag. */
+const GUIDE_NOTES_KEY = "loscuatro-guidenotes-v1";
+
+function useGuideNotes() {
+  const [on, setOn] = useState(() => {
+    try { return localStorage.getItem(GUIDE_NOTES_KEY) === "1"; } catch { return false; }
+  });
+  const toggle = () => setOn((v) => {
+    try { localStorage.setItem(GUIDE_NOTES_KEY, v ? "0" : "1"); } catch { /* privat läge */ }
+    return !v;
+  });
+  return [on, toggle];
+}
+
 function CourseGuide({ roundId, setRoundId, onPlay }) {
   const r = ROUNDS.find((x) => x.id === roundId);
+  const [showNotes, toggleNotes] = useGuideNotes();
   const sum = (a, k) => a.reduce((s, h) => s + h[k], 0);
   const front = r.holes.slice(0, 9), back = r.holes.slice(9);
 
@@ -494,17 +510,33 @@ function CourseGuide({ roundId, setRoundId, onPlay }) {
       <Head icon={MapPin} title="Banguide" sub={`${r.course} · ${r.location}`} />
       <DayPills value={roundId} onChange={setRoundId} />
 
+      <CourseIntro intro={r.intro} />
+
+      <button onClick={toggleNotes} style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+        width: "100%", marginBottom: 12, padding: "10px 0", cursor: "pointer",
+        borderRadius: 10, border: "none",
+        background: showNotes ? C.goldBright : "rgba(255,255,255,0.05)",
+        color: showNotes ? C.fairwayDark : C.mutedGreen,
+        fontSize: 12.5, fontWeight: 700,
+        transition: "background .2s ease, color .2s ease",
+      }}>
+        {showNotes ? <BookOpen size={14} strokeWidth={2.4} /> : <Book size={14} strokeWidth={2.4} />}
+        {showNotes ? "Dölj beskrivningar" : "Visa beskrivningar"}
+      </button>
+
       <div style={{ background: C.paper, borderRadius: 14, overflow: "hidden" }}>
-        <Nine title="Ut" holes={front} />
+        <Nine title="Ut" holes={front} showNotes={showNotes} />
         <div style={{ height: 1, background: C.paperDark, margin: "0 14px" }} />
-        <Nine title="In" holes={back} />
+        <Nine title="In" holes={back} showNotes={showNotes} />
         <div style={{
           display: "flex", padding: "11px 14px", fontFamily: MONO, fontSize: 13, fontWeight: 700,
           color: C.ink, background: C.paperDark,
         }}>
           <span style={{ flex: 1 }}>Totalt</span>
-          <span style={{ width: 38, textAlign: "center" }}>{sum(r.holes, "par")}</span>
-          <span style={{ width: 62, textAlign: "right" }}>{sum(r.holes, "m").toLocaleString("sv-SE")}</span>
+          <span style={{ width: 34, textAlign: "center" }}>{sum(r.holes, "par")}</span>
+          <span style={{ width: 36 }} />
+          <span style={{ width: 50, textAlign: "right" }}>{sum(r.holes, "m").toLocaleString("sv-SE")}</span>
         </div>
       </div>
 
@@ -526,7 +558,92 @@ function CourseGuide({ roundId, setRoundId, onPlay }) {
   );
 }
 
-function Nine({ title, holes }) {
+/* Baninledningen, ovanför håltabellen. Ligger på sidans mörka botten
+   med gott om luft — den ska hinna sätta stämningen innan siffrorna. */
+function CourseIntro({ intro }) {
+  if (!intro) return null;
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <h2 style={{
+        fontFamily: DISPLAY, fontSize: 19, fontWeight: 700, margin: 0, color: C.paper,
+        textTransform: "uppercase", letterSpacing: "0.06em", lineHeight: 1.2,
+      }}>
+        {intro.title}
+      </h2>
+      <div style={{
+        fontSize: 9.5, color: C.gold, letterSpacing: "0.17em",
+        textTransform: "uppercase", marginTop: 7, lineHeight: 1.6,
+      }}>
+        {intro.sub}
+      </div>
+      <div style={{ width: 40, height: 1, background: C.line, margin: "15px 0" }} />
+      {intro.body.map((t, i) => (
+        <p key={i} style={{
+          fontSize: 13, lineHeight: 1.85, color: "rgba(243,238,221,0.8)",
+          margin: i === intro.body.length - 1 ? 0 : "0 0 14px",
+        }}>{t}</p>
+      ))}
+    </div>
+  );
+}
+
+/* En hålrad. Par, index och meter syns alltid; beskrivningen styrs av
+   växlaren för hela banan — enskilda hål går inte att öppna, så man
+   slipper hålla reda på vilka man råkat fälla ut.
+
+   Utfällningen animeras med grid-template-rows 0fr → 1fr i stället för
+   max-height: höjden behöver då inte gissas, och texterna är olika
+   långa. Webbläsare som inte interpolerar fr-enheter hoppar i stället
+   direkt, vilket är ett acceptabelt fall tillbaka. */
+function HoleRow({ h, zebra, showNote }) {
+  return (
+    <div style={{ background: zebra ? "rgba(0,0,0,0.02)" : "transparent" }}>
+      <div style={{
+        display: "flex", alignItems: "center",
+        padding: "7px 14px", fontFamily: MONO, fontSize: 13, color: C.ink,
+      }}>
+        <span style={{ width: 22, fontWeight: 700, flexShrink: 0 }}>{h.hole}</span>
+        <span style={{
+          flex: 1, minWidth: 0, paddingRight: 8,
+          fontFamily: DISPLAY, fontSize: 12.5, fontWeight: 700, color: C.muted,
+          textTransform: "uppercase", letterSpacing: "0.05em",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {h.name || ""}
+        </span>
+        <span style={{
+          width: 34, textAlign: "center", flexShrink: 0,
+          color: h.par === 3 ? C.clay : h.par === 5 ? C.green : C.ink,
+        }}>{h.par}</span>
+        <span style={{ width: 36, textAlign: "center", flexShrink: 0, fontSize: 11.5, color: "#9A937A" }}>
+          {h.si}
+        </span>
+        <span style={{ width: 50, textAlign: "right", flexShrink: 0 }}>{h.m}</span>
+      </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateRows: showNote ? "1fr" : "0fr",
+        transition: "grid-template-rows .28s ease",
+      }}>
+        <div style={{ overflow: "hidden" }}>
+          <div style={{ padding: "0 16px 11px 36px" }}>
+            <div style={{
+              fontFamily: MONO, fontSize: 10.5, color: "#9A937A", letterSpacing: "0.02em",
+            }}>
+              Par {h.par} · {h.m} m · Index {h.si}
+            </div>
+            <div style={{ fontSize: 12, lineHeight: 1.72, color: C.muted, marginTop: 5 }}>
+              {h.note}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Nine({ title, holes, showNotes }) {
   return (
     <div>
       <div style={{
@@ -534,18 +651,12 @@ function Nine({ title, holes }) {
         color: C.muted, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.09em",
       }}>
         <span style={{ flex: 1 }}>{title}</span>
-        <span style={{ width: 38, textAlign: "center" }}>Par</span>
-        <span style={{ width: 62, textAlign: "right" }}>Meter</span>
+        <span style={{ width: 34, textAlign: "center" }}>Par</span>
+        <span style={{ width: 36, textAlign: "center" }}>Index</span>
+        <span style={{ width: 50, textAlign: "right" }}>Meter</span>
       </div>
       {holes.map((h) => (
-        <div key={h.hole} style={{
-          display: "flex", padding: "7px 14px", fontFamily: MONO, fontSize: 13, color: C.ink,
-          background: h.hole % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent",
-        }}>
-          <span style={{ flex: 1, fontWeight: 700 }}>{h.hole}</span>
-          <span style={{ width: 38, textAlign: "center", color: h.par === 3 ? C.clay : h.par === 5 ? C.green : C.ink }}>{h.par}</span>
-          <span style={{ width: 62, textAlign: "right" }}>{h.m}</span>
-        </div>
+        <HoleRow key={h.hole} h={h} zebra={h.hole % 2 === 0} showNote={showNotes} />
       ))}
     </div>
   );
@@ -904,6 +1015,12 @@ function Play({
   beers, onBeer, onUndoBeer,
 }) {
   const h = round.holes[hole];
+
+  /* Beskrivningen är hopfälld som standard — par och meter ska alltid
+     synas utan att scoreinmatningen trycks ner. Valet följer med
+     mellan hålen: öppnar man en gång står den öppen rundan ut. */
+  const [showNote, setShowNote] = useState(false);
+
   const ordered = useMemo(() => {
     if (!me) return PLAYERS;
     return [...PLAYERS].sort((a, b) => (a.id === me ? -1 : b.id === me ? 1 : 0));
@@ -940,12 +1057,45 @@ function Play({
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 9.5, color: C.mutedGreen, letterSpacing: "0.2em", textTransform: "uppercase" }}>Hål</div>
             <div style={{ fontFamily: DISPLAY, fontSize: 46, fontWeight: 700, color: C.goldBright, lineHeight: 1 }}>{hole + 1}</div>
+            {h.name && (
+              <div style={{
+                fontFamily: DISPLAY, fontSize: 13, fontWeight: 700, color: C.gold,
+                textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 6, lineHeight: 1.2,
+              }}>
+                {h.name}
+              </div>
+            )}
             <div style={{ fontSize: 12.5, color: C.mutedGreen, marginTop: 3 }}>
-              Par {h.par} · {h.m} m
+              Par {h.par} · {h.m} m · <span style={{ color: C.dim }}>Index {h.si}</span>
             </div>
           </div>
           <Arrow dir="right" disabled={hole === 17} onClick={() => setHole((x) => Math.min(17, x + 1))} />
         </div>
+
+        {h.note && (
+          <div style={{ marginTop: 12 }}>
+            <button onClick={() => setShowNote((v) => !v)} style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              width: "100%", padding: "7px 0", cursor: "pointer",
+              background: "none", border: "none",
+              color: C.mutedGreen, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}>
+              Om hålet
+              <ChevronDown size={13} strokeWidth={2.4} style={{
+                transform: showNote ? "rotate(180deg)" : "none", transition: "transform .15s",
+              }} />
+            </button>
+            {showNote && (
+              <p style={{
+                fontSize: 12.5, lineHeight: 1.75, color: C.mutedGreen,
+                margin: "4px 4px 0", textAlign: "left",
+              }}>
+                {h.note}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Hole strip — shows your own progress */}
         <div style={{ display: "flex", gap: 3, marginTop: 14, justifyContent: "center", flexWrap: "wrap" }}>
