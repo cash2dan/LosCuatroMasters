@@ -587,14 +587,18 @@ function MastersProse({ paragraphs }) {
   ));
 }
 
-/* Porträttet i en egen kolumn, texten i en egen bredvid — ingen text
-   löper under bilden. Bilden får inte krympa när texten är lång. */
+/* Porträttet flyter till vänster i stället för att ligga i en egen
+   flexkolumn. Texten löper då runt bilden och fortsätter i full bredd
+   under den — nödvändigt vid 112 px bild, annars blir spalten bredvid
+   för smal på en telefon och korten orimligt höga.
+   `overflow: hidden` innesluter floaten, så kortet blir minst lika
+   högt som bilden även om en text skulle bli kort. */
 function MastersPerson({ id, body }) {
   const player = PLAYERS.find((x) => x.id === id);
   if (!player) return null;
   return (
     <div style={{
-      display: "flex", gap: 14, alignItems: "flex-start",
+      overflow: "hidden",
       background: C.paper, borderRadius: 14, borderLeft: `4px solid ${player.color}`,
       padding: "16px 18px", marginBottom: 13,
     }}>
@@ -606,20 +610,18 @@ function MastersPerson({ id, body }) {
         loading="lazy"
         style={{
           width: 112, height: 112, objectFit: "cover", borderRadius: 12,
-          flexShrink: 0, display: "block", background: C.paperDark,
+          float: "left", margin: "0 14px 8px 0", display: "block", background: C.paperDark,
         }}
       />
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, color: C.ink,
-          textTransform: "uppercase", letterSpacing: "0.06em", lineHeight: 1.1,
-        }}>
-          {player.name}
-        </div>
-        <p style={{ fontSize: 13, lineHeight: 1.78, color: C.muted, margin: "8px 0 0" }}>
-          {body}
-        </p>
+      <div style={{
+        fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, color: C.ink,
+        textTransform: "uppercase", letterSpacing: "0.06em", lineHeight: 1.1,
+      }}>
+        {player.name}
       </div>
+      <p style={{ fontSize: 13, lineHeight: 1.78, color: C.muted, margin: "8px 0 0" }}>
+        {body}
+      </p>
     </div>
   );
 }
