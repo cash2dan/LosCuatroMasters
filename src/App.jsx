@@ -26,6 +26,8 @@ import { beerCurves, weightedSlope, beerLevels, slopeText } from "./beer";
 export default function App() {
   const [tab, setTab] = useState("schema");
   const [roundId, setRoundId] = useState(ROUNDS[0].id);
+  /* Scorekortet ligger utanför TABS och nås bara från Leaderboard. */
+  const [card, setCard] = useState({ player: PLAYERS[0].id, round: ROUNDS[0].id });
   const [hole, setHole] = useState(0);
   const { scores, beers, set, addBeer, undoBeer, sync, reset } = useScores();
   const [me, chooseMe] = useMe();
@@ -75,7 +77,26 @@ export default function App() {
           onUndoBeer={(pid) => undoBeer(roundId, pid)}
         />
       )}
-      {tab === "board" && <Leaderboard scores={scores} me={me} />}
+      {tab === "board" && (
+        <Leaderboard
+          scores={scores} me={me}
+          onOpenCard={(playerId, view) => {
+            setCard({ player: playerId, round: view === "all" ? ROUNDS[0].id : view });
+            setTab("card");
+            window.scrollTo(0, 0);
+          }}
+        />
+      )}
+      {tab === "card" && (
+        <Scorecard
+          scores={scores}
+          playerId={card.player}
+          roundId={card.round}
+          onPickPlayer={(id) => setCard((c) => ({ ...c, player: id }))}
+          onPickRound={(id) => setCard((c) => ({ ...c, round: id }))}
+          onBack={() => { setTab("board"); window.scrollTo(0, 0); }}
+        />
+      )}
       {tab === "dream" && <Dream18 scores={scores} me={me} />}
       {tab === "ol" && <BeerCurve scores={scores} beers={beers} />}
       {tab === "awards" && <Awards scores={scores} beers={beers} />}
@@ -721,7 +742,7 @@ function MastersPerson({ id, body }) {
         loading="lazy"
         style={{
           width: 112, height: 112, objectFit: "cover", borderRadius: 12,
-          float: "left", margin: "0 14px 8px 0", display: "block", background: C.paperDark,
+          float: "left", margin: "0 14px 0 0", display: "block", background: C.paperDark,
         }}
       />
       <div style={{
@@ -1519,7 +1540,398 @@ function roundStat(round, holesArr) {
    LEADERBOARD
    ========================================================= */
 
-function Leaderboard({ scores, me }) {
+/* =========================================================
+   SCOREKORT
+
+   Nås bara från Leaderboard — ingen egen flik. All data finns
+   redan; här räknas den bara om per runda och spelare.
+
+   Rutnätet är två block om nio hål i stället för ett om arton.
+   Det är det som gör att kortet ryms på en telefon utan vare sig
+   sidoscroll eller hopfällda rader: elva kolumner i stället för
+   tjugo ger ungefär 25 px per hålruta vid 360 px skärm.
+   ========================================================= */
+
+/* Brutto, alltid. Hoppar man över ett hål räknas det inte alls —
+   varken i par-summan eller i snitten. */
+function cardStats(round, holes) {
+  const hs = holes.map((h, i) => ({ ...round.holes[i], ...h }));
+  const played = hs.filter((h) => h.s != null);
+
+  const half = (arr) => {
+    const pl = arr.filter((h) => h.s != null);
+    if (!pl.length) return null;
+    const strokes = pl.reduce((s, h) => s + h.s, 0);
+    return { strokes, toPar: strokes - pl.reduce((s, h) => s + h.par, 0), played: pl.length };
+  };
+
+  const girHoles = hs.filter((h) => h.gir === true);
+  const fwApplicable = hs.filter((h) => h.par !== 3);
+  const fwHoles = fwApplicable.filter((h) => h.fw === true);
+  const puttHoles = hs.filter((h) => h.p != null);
+  const puttsOnGir = hs.filter((h) => h.gir === true && h.p != null);
+
+  /* Räddningslägen: spelade hål utan ibockad green. */
+  const scrOpp = played.filter((h) => h.gir !== true);
+  const scrOk = scrOpp.filter((h) => h.s - h.par <= 0);
+
+  const dist = { eagle: 0, birdie: 0, par: 0, bogey: 0, double: 0 };
+  played.forEach((h) => {
+    const d = h.s - h.par;
+    if (d <= -2) dist.eagle++;
+    else if (d === -1) dist.birdie++;
+    else if (d === 0) dist.par++;
+    else if (d === 1) dist.bogey++;
+    else dist.double++;
+  });
+
+  /* Svåra mot lätta: de nio med lägst hålindex mot de nio med högst.
+     Snittet räknas bara på spelade hål i respektive grupp. */
+  const bySi = [...hs].sort((a, b) => a.si - b.si);
+  const avgOver = (arr) => {
+    const pl = arr.filter((h) => h.s != null);
+    return pl.length ? pl.reduce((s, h) => s + (h.s - h.par), 0) / pl.length : null;
+  };
+
+  const sorted = [...played].sort((a, b) => (a.s - a.par) - (b.s - b.par));
+
+  return {
+    played: played.length,
+    strokes: played.reduce((s, h) => s + h.s, 0),
+    toPar: played.reduce((s, h) => s + (h.s - h.par), 0),
+    out: half(hs.slice(0, 9)),
+    in: half(hs.slice(9)),
+    parOut: hs.slice(0, 9).reduce((s, h) => s + h.par, 0),
+    parIn: hs.slice(9).reduce((s, h) => s + h.par, 0),
+
+    hasGir: hs.some((h) => h.gir != null),
+    gir: girHoles.length,
+    hasFw: fwApplicable.some((h) => h.fw != null),
+    fw: fwHoles.length,
+    fwOf: fwApplicable.length,
+    hasPutts: puttHoles.length > 0,
+    putts: puttHoles.reduce((s, h) => s + h.p, 0),
+    puttHoles: puttHoles.length,
+
+    puttsPerGir: puttsOnGir.length
+      ? puttsOnGir.reduce((s, h) => s + h.p, 0) / puttsOnGir.length
+      : null,
+    puttsPerGirN: puttsOnGir.length,
+    scrOpp: scrOpp.length,
+    scrOk: scrOk.length,
+
+    dist,
+    best: sorted[0] || null,
+    worst: sorted[sorted.length - 1] || null,
+    hard: avgOver(bySi.slice(0, 9)),
+    easy: avgOver(bySi.slice(9)),
+  };
+}
+
+/* Samma skala som snabbknapparna på Spela och hålremsan. */
+function scoreChip(d) {
+  if (d <= -2) return { bg: C.goldBright, fg: C.fairwayDark };
+  if (d === -1) return { bg: C.green, fg: C.paper };
+  if (d === 0) return { bg: C.paper, fg: C.ink };
+  if (d === 1) return { bg: C.clay, fg: C.paper };
+  return { bg: "#8A2E1F", fg: C.paper };
+}
+
+const DIST_ROWS = [
+  { k: "eagle", t: "Eagle eller bättre", c: C.goldBright },
+  { k: "birdie", t: "Birdie", c: C.green },
+  { k: "par", t: "Par", c: C.paper },
+  { k: "bogey", t: "Bogey", c: C.clay },
+  { k: "double", t: "Dubbel eller sämre", c: "#8A2E1F" },
+];
+
+/* Ett niohålsblock. Rutnätet är en grid så att alla sju raderna
+   ligger i lod — hålkolumnerna delar bredden lika. */
+function CardNine({ title, holes, hs, show }) {
+  const cell = {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    height: 24, fontFamily: MONO, fontSize: 11,
+  };
+  const label = {
+    display: "flex", alignItems: "center", height: 24,
+    fontSize: 9.5, fontWeight: 800, color: C.mutedGreen,
+    textTransform: "uppercase", letterSpacing: "0.07em",
+  };
+
+  const sum = (fn) => hs.reduce((s, h) => s + (fn(h) || 0), 0);
+  const anyScore = hs.some((h) => h.s != null);
+
+  const row = (key, node) => <div key={key} style={cell}>{node}</div>;
+
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "52px repeat(9, 1fr) 30px",
+      gap: 2, marginBottom: 12,
+    }}>
+      {/* Hål */}
+      <div style={label}>Hål</div>
+      {holes.map((h) => (
+        <div key={h.hole} style={{ ...cell, color: C.paper, fontWeight: 700 }}>{h.hole}</div>
+      ))}
+      <div style={{ ...cell, color: C.gold, fontWeight: 700, fontSize: 10 }}>{title}</div>
+
+      {/* Index */}
+      <div style={label}>Index</div>
+      {holes.map((h) => (
+        <div key={h.hole} style={{ ...cell, color: C.dim, fontSize: 10 }}>{h.si}</div>
+      ))}
+      <div style={{ ...cell, color: C.dim }}>—</div>
+
+      {/* Par */}
+      <div style={label}>Par</div>
+      {holes.map((h) => (
+        <div key={h.hole} style={{ ...cell, color: C.mutedGreen }}>{h.par}</div>
+      ))}
+      <div style={{ ...cell, color: C.mutedGreen, fontWeight: 700 }}>
+        {holes.reduce((s, h) => s + h.par, 0)}
+      </div>
+
+      {/* Resultat */}
+      <div style={{ ...label, color: C.paper }}>Res</div>
+      {hs.map((h, i) => {
+        if (h.s == null) {
+          return (
+            <div key={i} style={{
+              ...cell, color: "rgba(243,238,221,0.25)",
+              background: "rgba(255,255,255,0.04)", borderRadius: 4,
+            }}>–</div>
+          );
+        }
+        const c = scoreChip(h.s - h.par);
+        return (
+          <div key={i} style={{
+            ...cell, background: c.bg, color: c.fg, borderRadius: 4, fontWeight: 700, fontSize: 12,
+          }}>{h.s}</div>
+        );
+      })}
+      <div style={{ ...cell, color: C.paper, fontWeight: 700 }}>
+        {anyScore ? sum((h) => h.s) : "–"}
+      </div>
+
+      {show.gir && (
+        <>
+          <div style={label}>GIR</div>
+          {hs.map((h, i) => row("g" + i, h.gir === true
+            ? <Check size={12} color="#6FBE8F" strokeWidth={3.4} />
+            : <span style={{ color: "rgba(243,238,221,0.18)" }}>·</span>))}
+          <div style={{ ...cell, color: C.mutedGreen, fontWeight: 700 }}>
+            {hs.filter((h) => h.gir === true).length}
+          </div>
+        </>
+      )}
+
+      {show.fw && (
+        <>
+          <div style={label}>Fway</div>
+          {hs.map((h, i) => row("f" + i, h.par === 3
+            ? <span style={{ color: C.dim }}>—</span>
+            : h.fw === true
+              ? <Check size={12} color="#6FBE8F" strokeWidth={3.4} />
+              : <span style={{ color: "rgba(243,238,221,0.18)" }}>·</span>))}
+          <div style={{ ...cell, color: C.mutedGreen, fontWeight: 700 }}>
+            {hs.filter((h) => h.par !== 3 && h.fw === true).length}
+          </div>
+        </>
+      )}
+
+      {show.putts && (
+        <>
+          <div style={label}>Puttar</div>
+          {hs.map((h, i) => row("p" + i, h.p != null
+            ? <span style={{ color: C.mutedGreen }}>{h.p}</span>
+            : <span style={{ color: "rgba(243,238,221,0.18)" }}>·</span>))}
+          <div style={{ ...cell, color: C.mutedGreen, fontWeight: 700 }}>
+            {sum((h) => h.p)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatRow({ k, v, sub }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "baseline", gap: 10,
+      padding: "9px 0", borderTop: `1px solid ${C.line}`,
+    }}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.mutedGreen }}>{k}</span>
+      <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.paper }}>{v}</span>
+      {sub && <span style={{ fontFamily: MONO, fontSize: 11, color: C.dim, width: 60, textAlign: "right", whiteSpace: "nowrap" }}>{sub}</span>}
+    </div>
+  );
+}
+
+function StatHead({ children }) {
+  return (
+    <div style={{
+      fontSize: 9.5, fontWeight: 800, color: C.gold, textTransform: "uppercase",
+      letterSpacing: "0.18em", margin: "22px 0 4px",
+    }}>{children}</div>
+  );
+}
+
+/* Scoringfördelningen som en vågrät stapel i resultatradens färger,
+   med en teckenförklaring under för de kategorier som förekommer. */
+function DistBar({ dist, played }) {
+  if (!played) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", gap: 1 }}>
+        {DIST_ROWS.filter((d) => dist[d.k] > 0).map((d) => (
+          <div key={d.k} style={{ flex: dist[d.k], background: d.c }} />
+        ))}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 10 }}>
+        {DIST_ROWS.filter((d) => dist[d.k] > 0).map((d) => (
+          <div key={d.k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: d.c, flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, color: C.mutedGreen }}>{d.t}</span>
+            <span style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: 700, color: C.paper }}>{dist[d.k]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const one = (n) => n.toFixed(1).replace(".", ",");
+const two = (n) => n.toFixed(2).replace(".", ",");
+const pct = (n, of) => `${Math.round((n / of) * 100)} %`;
+
+function Scorecard({ scores, playerId, roundId, onPickPlayer, onPickRound, onBack }) {
+  const round = ROUNDS.find((r) => r.id === roundId);
+  const player = PLAYERS.find((p) => p.id === playerId);
+  const holes = scores[roundId][playerId];
+
+  const st = useMemo(() => cardStats(round, holes), [round, holes]);
+  const hs = holes.map((h, i) => ({ ...round.holes[i], ...h }));
+
+  /* Rader utan underlag ritas inte alls — tomma bockar säger inget. */
+  const show = { gir: st.hasGir, fw: st.hasFw, putts: st.hasPutts };
+
+  return (
+    <div style={{ padding: "18px 16px 60px" }}>
+      <button onClick={onBack} style={{
+        display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
+        background: "rgba(255,255,255,0.05)", border: `1px solid ${C.line}`, borderRadius: 20,
+        color: C.mutedGreen, fontSize: 12, fontWeight: 700, padding: "9px 15px", marginBottom: 16,
+      }}>
+        <ChevronLeft size={14} strokeWidth={2.4} /> Leaderboard
+      </button>
+
+      {/* Spelarväxlare — man vill titta på de andras kort direkt. */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {PLAYERS.map((p) => {
+          const on = p.id === playerId;
+          return (
+            <button key={p.id} onClick={() => onPickPlayer(p.id)} style={{
+              flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              padding: "9px 4px", borderRadius: 10, border: "none", cursor: "pointer",
+              background: on ? C.paper : "rgba(255,255,255,0.05)",
+              color: on ? C.ink : C.mutedGreen, fontSize: 11.5, fontWeight: 700,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <DayPills value={roundId} onChange={onPickRound} />
+
+      <div style={{ marginBottom: 14 }}>
+        <div style={{
+          fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, color: C.paper,
+          textTransform: "uppercase", letterSpacing: "0.04em", lineHeight: 1.15,
+        }}>
+          {player.name}
+        </div>
+        <div style={{ fontSize: 11.5, color: C.mutedGreen, marginTop: 2 }}>
+          {round.day} {round.date} · {round.short_course}
+        </div>
+      </div>
+
+      <div style={{
+        background: "rgba(255,255,255,0.04)", border: `1px solid ${C.line}`,
+        borderRadius: 14, padding: "12px 10px 4px",
+      }}>
+        <CardNine title="Ut" holes={round.holes.slice(0, 9)} hs={hs.slice(0, 9)} show={show} />
+        <CardNine title="In" holes={round.holes.slice(9)} hs={hs.slice(9)} show={show} />
+
+        <div style={{
+          display: "flex", gap: 8, padding: "11px 2px 12px", borderTop: `1px solid ${C.line}`,
+        }}>
+          {[
+            { k: "Ut", v: st.out, par: st.parOut },
+            { k: "In", v: st.in, par: st.parIn },
+            { k: "Totalt", v: st.played ? { strokes: st.strokes, toPar: st.toPar } : null, par: st.parOut + st.parIn },
+          ].map((x) => (
+            <div key={x.k} style={{ flex: 1, textAlign: "center" }}>
+              <div style={{
+                fontSize: 9.5, color: C.mutedGreen, textTransform: "uppercase", letterSpacing: "0.12em",
+              }}>{x.k}</div>
+              <div style={{
+                fontFamily: MONO, fontSize: 19, fontWeight: 700, color: C.paper, marginTop: 3,
+              }}>{x.v ? x.v.strokes : "–"}</div>
+              <div style={{
+                fontFamily: MONO, fontSize: 11, fontWeight: 700, marginTop: 1,
+                color: x.v ? parColor(x.v.toPar) : C.dim,
+              }}>{x.v ? fmtPar(x.v.toPar) : "–"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {!st.played && <div style={{ marginTop: 16 }}><Empty text="Inga slag inrapporterade för den här rundan än." /></div>}
+
+      {st.played > 0 && (
+        <>
+          <StatHead>Grunddata</StatHead>
+          <StatRow k="Score" v={st.strokes} sub={fmtPar(st.toPar)} />
+          {st.out && <StatRow k="Ut" v={st.out.strokes} sub={fmtPar(st.out.toPar)} />}
+          {st.in && <StatRow k="In" v={st.in.strokes} sub={fmtPar(st.in.toPar)} />}
+          {st.played < 18 && <StatRow k="Spelade hål" v={`${st.played} av 18`} />}
+          {st.hasGir && <StatRow k="Greens in regulation" v={`${st.gir} av 18`} sub={pct(st.gir, 18)} />}
+          {st.hasFw && <StatRow k="Fairwayträffar" v={`${st.fw} av ${st.fwOf}`} sub={pct(st.fw, st.fwOf)} />}
+          {st.hasPutts && (
+            <StatRow k="Puttar" v={st.putts} sub={`${two(st.putts / st.puttHoles)}/hål`} />
+          )}
+
+          <StatHead>Fördjupning</StatHead>
+          {st.puttsPerGir != null && (
+            <StatRow k={`Puttar per träffad green (${st.puttsPerGirN} hål)`} v={two(st.puttsPerGir)} />
+          )}
+          {st.hasGir && st.scrOpp > 0 && (
+            <StatRow k="Scrambling" v={`${st.scrOk} av ${st.scrOpp}`} sub={pct(st.scrOk, st.scrOpp)} />
+          )}
+          {st.best && (
+            <StatRow k={`Bästa hål (${st.best.hole})`} v={`${st.best.s} på par ${st.best.par}`} sub={fmtPar(st.best.s - st.best.par)} />
+          )}
+          {st.worst && st.worst !== st.best && (
+            <StatRow k={`Sämsta hål (${st.worst.hole})`} v={`${st.worst.s} på par ${st.worst.par}`} sub={fmtPar(st.worst.s - st.worst.par)} />
+          )}
+          {st.hard != null && st.easy != null && (
+            <>
+              <StatRow k="Snitt på de nio svåraste (index 1–9)" v={one(st.hard)} />
+              <StatRow k="Snitt på de nio lättaste (index 10–18)" v={one(st.easy)} />
+            </>
+          )}
+
+          <StatHead>Scoringfördelning</StatHead>
+          <DistBar dist={st.dist} played={st.played} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function Leaderboard({ scores, me, onOpenCard }) {
   const [view, setView] = useState("all");
 
   const rows = useMemo(() => {
@@ -1548,7 +1960,7 @@ function Leaderboard({ scores, me }) {
 
   return (
     <div style={{ padding: "20px 16px 60px" }}>
-      <Head icon={Trophy} title="Leaderboard" sub="Bruttoscore · rakt av" />
+      <Head icon={Trophy} title="Leaderboard" sub="Tryck på en spelare för scorekortet" />
       <DayPills value={view} onChange={setView} includeAll />
 
       {!live && <Empty text="Inga slag inrapporterade än." />}
@@ -1558,7 +1970,11 @@ function Leaderboard({ scores, me }) {
           <Podium rows={rows.filter((r) => r.played > 0).slice(0, 3)} />
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {rows.map((r, i) => (
-              <Row key={r.id} r={r} pos={i + 1} lead={lead} isMe={r.id === me} showPer={view === "all"} />
+              <Row
+                key={r.id} r={r} pos={i + 1} lead={lead}
+                isMe={r.id === me} showPer={view === "all"}
+                onOpen={() => onOpenCard(r.id, view)}
+              />
             ))}
           </div>
         </>
@@ -1613,14 +2029,20 @@ function Podium({ rows }) {
   );
 }
 
-function Row({ r, pos, lead, isMe, showPer }) {
+function Row({ r, pos, lead, isMe, showPer, onOpen }) {
   const gap = r.played > 0 ? r.toPar - lead : null;
   return (
-    <div style={{
-      background: pos === 1 && r.played > 0 ? C.gold : C.paper,
-      borderRadius: 12, padding: "12px 14px", opacity: r.played ? 1 : 0.45,
-      boxShadow: isMe ? `0 0 0 1.5px ${C.goldBright}` : "none",
-    }}>
+    <div
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      style={{
+        background: pos === 1 && r.played > 0 ? C.gold : C.paper,
+        borderRadius: 12, padding: "12px 14px", opacity: r.played ? 1 : 0.45,
+        boxShadow: isMe ? `0 0 0 1.5px ${C.goldBright}` : "none",
+        cursor: "pointer",
+      }}>
       <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
         <div style={{
           fontFamily: DISPLAY, fontSize: 19, fontWeight: 700, width: 20,
@@ -1646,6 +2068,7 @@ function Row({ r, pos, lead, isMe, showPer }) {
             {r.played ? r.strokes : ""}
           </div>
         </div>
+        <ChevronRight size={15} color={pos === 1 && r.played > 0 ? "rgba(10,42,33,0.5)" : C.muted} strokeWidth={2.4} style={{ flexShrink: 0, marginLeft: 2 }} />
       </div>
 
       {showPer && r.played > 0 && (

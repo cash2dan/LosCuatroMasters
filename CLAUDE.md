@@ -126,6 +126,45 @@ lockupen ner sig till två rader bredvid vapnet. Det är avsiktligt och
 ser bra ut; att krympa vapnet räddar det inte, eftersom det är titeln
 som tar plats.
 
+## Scorekortet
+
+Per spelare och runda, nås **bara genom att trycka på en rad i
+Leaderboard** — ingen flik. Ligger på `tab === "card"` utanför `TABS`,
+med `card = { player, round }` i App. Är "Totalt" valt i Leaderboards
+dagväxlare öppnas fredagsrundan. Till skillnad från Mästerskapet-sidan
+behåller vyn masthead och flikrad; den är en datavy, inte en egen sida.
+
+I vyn finns en tillbaka-knapp, en spelarväxlare med alla fyra namnen
+och `DayPills` för runda — man vill titta på de andras kort direkt
+efter sitt eget, utan att gå tillbaka.
+
+### Rutnätet
+
+Två block om nio hål med raderna Hål, Index, Par, Res, GIR, Fway och
+Puttar. Resultatrutorna är fyllda i samma skala som snabbknapparna på
+Spela (`scoreChip`): guld för eagle, grönt för birdie, papper för par,
+lera för bogey, mörkröd för dubbel eller sämre. Fairway visar `—` på
+par 3, inte tom ruta — annars ser det ut som ett glömt värde.
+
+**Mobilanpassningen ligger i uppdelningen på två nio-hålsblock**, inte
+i sidoscroll eller hopfällda rader. Elva kolumner (etikett + 9 hål +
+summa) ger ungefär 25 px per hålruta vid 360 px, vilket räcker för två
+siffror i 11–12 px mono. Blir raderna fler eller kolumnerna bredare är
+det den marginalen som äts upp först.
+
+Rader utan underlag ritas inte alls: har ingen fyllt i GIR den rundan
+försvinner både GIR-raden i rutnätet och alla GIR-beroende värden i
+sammanställningen. Samma sak för fairway och puttar.
+
+### Sammanställningen
+
+`cardStats(round, holes)` räknar allt: Ut/In/totalt, GIR, fairway
+(par 3 räknas inte), puttar, puttar per träffad green, scrambling,
+scoringfördelning, bästa och sämsta hål, samt snitt över par på de nio
+hålen med lägst hålindex mot de nio med högst. Allt brutto — ingen
+nettorad, ingen öl, inga awards. Hål utan inrapporterat slag räknas
+inte alls, varken i par-summan eller i snitten.
+
 ## Datamodell i Firestore
 
 Tre dokument, ett per runda:
