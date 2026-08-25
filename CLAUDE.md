@@ -16,11 +16,14 @@ inget Tailwind). Färger, typsnitt och bandata bor i `src/data.js`.
 ## Filer
 
 ```
+tests/              Vitest-svit mot src/stats.js och src/beer.js
 src/data.js         Bandata, spelare, färger, typsnitt, score- och ölmodell
                     samt MASTERS och EDITION_2025 — Om mästerskapet
 src/assets/         Porträtt (600×600 jpeg), importeras från data.js
 data/               Scorekort 2025 i csv. Källmaterial, inte kod
-src/App.jsx         Hela gränssnittet + award-beräkningarna
+src/App.jsx         Hela gränssnittet (inga beräkningar)
+src/stats.js        Scorekort, leaderboard, Dream 18, awards
+src/seed.js         Testdatagenerator — bara utvecklingsläge
 src/Crest.jsx       LCM-vapnet som SVG-komponent
 src/beer.js         Ölkurvans matematik (nivåer, viktad regression)
 src/useScores.js    Firestore-synk, debounce, offlinekö, "vem är du"
@@ -406,6 +409,16 @@ Tio stycken, alla positiva — ingen sämst-kategori. Definitionerna ligger i
 `AWARDS`-arrayen och beräknas i `computeAwards(rounds, scores, beers)` i
 `App.jsx`. Saknas underlag visas `—`.
 
+Vinnaren kommer som `winners` — **alltid en lista**. Ligger flera
+spelare exakt lika ska alla visas, med "delad ·" före värdet. `p`
+pekar på den första av dem och finns kvar för kod som bara behöver en
+representant. Skriv aldrig om `pick` så att den tappar de delade.
+
+Houdini kräver att GIR faktiskt är inrapporterat. Utan GIR-data är
+`gir !== true` sant på varje hål, och då skulle varje par räknas som
+en räddning — `awardStats` har samma skydd som `cardStats`. Samma
+sorts fälla lurar i alla mått som bygger på frånvaron av ett värde.
+
 Tionde awarden är **The Optimizer** (Star-ikonen): lägst (mest negativ)
 lutning från `weightedSlope` vinner. Kräver hål på **minst tre olika
 öl-nivåer**. Presenteras alltid utan minustecken via `slopeText`.
@@ -440,10 +453,52 @@ för hand på `controllerchange`, med en timeout-fallback. Ta inte bort det
 ## Utveckling
 
 ```bash
-npm run dev       # service worker avstängd
-npm run build     # produktionsbygge till dist/
-npm run preview   # servera dist/ inklusive service worker
+npm run dev        # service worker avstängd
+npm run build      # produktionsbygge till dist/
+npm run preview    # servera dist/ inklusive service worker
+npm test           # kör testsviten en gång
+npm run test:watch # kör om vid ändring
 ```
+
+## Tester
+
+All beräkningslogik ligger i `src/stats.js` och `src/beer.js` — rena
+funktioner utan React och utan Firestore. **Lägg aldrig tillbaka
+beräkningar i App.jsx**; då går de inte att testa. `App.jsx` ska bara
+rita.
+
+Sviten körs mot Node, utan webbläsare och utan nät, och har inga
+sidoeffekter — den läser bara `data/*.csv`.
+
+| Fil | Vad den täcker |
+|---|---|
+| `tests/edition2025.test.js` | Referenstest: 2025 års scorekort genom motorn mot facit, plus att `EDITION_2025` i data.js stämmer mot csv-filerna |
+| `tests/invariants.test.js` | Sanningar som alltid måste hålla, mot både 2025 och tolv deterministiskt slumpade uppsättningar |
+| `tests/edgecases.test.js` | Tom data, halva rundor, extremscore, delade awards, saknade fält |
+| `tests/seed.test.js` | Att seed-datan faktiskt ger det underlag den lovar |
+| `tests/helpers.js` | Csv-läsare och deterministisk slumpgenerator |
+
+Slumpdatan använder fasta frön. Ett fel går alltid att återskapa —
+byt aldrig till `Math.random()`.
+
+## Seed-läge
+
+Dev-panelen nere till vänster (kugghjulet) fyller appen med
+realistisk testdata: kompletta rundor för alla fyra spelare på alla
+tre dagar, med GIR, fairway, puttar och öl. Scoren speglar
+spelarnas nivå, och varje runda garanteras minst en birdie och minst
+en dubbelbogey så färgskalan och formkonventionen går att granska.
+Ölen sprids så att The Optimizer får minst tre nivåer.
+
+Panelen ligger bakom `import.meta.env.DEV` och finns inte i
+produktionsbygget — kontrollera med
+`grep buildSeed dist/assets/index-*.js` om du är osäker.
+
+`seedAll` i `useScores` skriver genom **samma kö som vanlig
+inmatning**: optimistisk uppdatering, cache, debounce och offlinekö.
+Poängen är att en seed-körning testar synken på riktigt. Den skriver
+alltså till den delade databasen — rensa efteråt med "Rensa seed"
+eller Nollställ under Schema.
 
 Utan ifylld `.env` startar appen i lokalt läge mot localStorage. Kör
 gärna dev-servern så när du testar, så att testdata inte hamnar i den

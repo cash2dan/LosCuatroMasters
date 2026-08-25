@@ -13,7 +13,9 @@ import {
 import { useScores, useMe } from "./useScores";
 import { usePwaUpdate } from "./usePwaUpdate";
 import Crest from "./Crest";
-import { beerCurves, weightedSlope, beerLevels, slopeText } from "./beer";
+import { buildSeed, buildEmpty } from "./seed";
+import { beerCurves, slopeText } from "./beer";
+import { roundStat, leaderboardRows, dream18Rows, cardStats, computeAwards } from "./stats";
 
 /* =========================================================
    LOS CUATRO MASTERS
@@ -30,7 +32,7 @@ export default function App() {
   /* Scorekortet ligger utanför TABS och nås bara från Leaderboard. */
   const [card, setCard] = useState({ player: PLAYERS[0].id, round: ROUNDS[0].id });
   const [hole, setHole] = useState(0);
-  const { scores, beers, set, addBeer, undoBeer, sync, reset } = useScores();
+  const { scores, beers, set, addBeer, undoBeer, sync, reset, seedAll } = useScores();
   const [me, chooseMe] = useMe();
   const pwa = usePwaUpdate();
 
@@ -103,6 +105,7 @@ export default function App() {
       {tab === "awards" && <Awards scores={scores} beers={beers} />}
       {tab === "regler" && <Rules />}
 
+      {import.meta.env.DEV && <DevSeed onSeed={seedAll} />}
       <UpdateBanner {...pwa} />
     </div>
   );
@@ -1580,19 +1583,6 @@ const roundBtn = {
    BERÄKNINGAR
    ========================================================= */
 
-function roundStat(round, holesArr) {
-  let strokes = 0, parSum = 0, played = 0, putts = 0, birdies = 0;
-  holesArr.forEach((h, i) => {
-    if (h.s == null) return;
-    played++;
-    strokes += h.s;
-    parSum += round.holes[i].par;
-    if (h.s - round.holes[i].par <= -1) birdies++;
-    if (h.p != null) putts += h.p;
-  });
-  return { played, strokes, toPar: strokes - parSum, putts, birdies };
-}
-
 /* =========================================================
    LEADERBOARD
    ========================================================= */
@@ -1608,77 +1598,6 @@ function roundStat(round, holesArr) {
    sidoscroll eller hopfällda rader: elva kolumner i stället för
    tjugo ger ungefär 25 px per hålruta vid 360 px skärm.
    ========================================================= */
-
-/* Brutto, alltid. Hoppar man över ett hål räknas det inte alls —
-   varken i par-summan eller i snitten.
-
-   Allt som kan sakna underlag returneras som `null`, aldrig som 0.
-   Sammanställningen ritar `null` som streck: noll greenträffar och
-   "ingen har fyllt i green" är inte samma sak. */
-function cardStats(round, holes) {
-  const hs = holes.map((h, i) => ({ ...round.holes[i], ...h }));
-  const played = hs.filter((h) => h.s != null);
-
-  const half = (arr) => {
-    const pl = arr.filter((h) => h.s != null);
-    if (!pl.length) return null;
-    const strokes = pl.reduce((s, h) => s + h.s, 0);
-    return { strokes, toPar: strokes - pl.reduce((s, h) => s + h.par, 0) };
-  };
-
-  const girHoles = hs.filter((h) => h.gir === true);
-  const fwApplicable = hs.filter((h) => h.par !== 3);
-  const fwHoles = fwApplicable.filter((h) => h.fw === true);
-  const puttHoles = hs.filter((h) => h.p != null);
-
-  /* Andel: null när det inte finns några tillfällen alls. */
-  const share = (ok, of) => (of ? { ok, of } : null);
-
-  const puttsOnGir = hs.filter((h) => h.gir === true && h.p != null);
-  const girPlayed = girHoles.filter((h) => h.s != null);
-  const fwPlayed = fwHoles.filter((h) => h.s != null);
-  const missed = played.filter((h) => h.gir !== true);
-
-  const dist = { eagle: 0, birdie: 0, par: 0, bogey: 0, double: 0 };
-  played.forEach((h) => {
-    const d = h.s - h.par;
-    if (d <= -2) dist.eagle++;
-    else if (d === -1) dist.birdie++;
-    else if (d === 0) dist.par++;
-    else if (d === 1) dist.bogey++;
-    else dist.double++;
-  });
-
-  return {
-    played: played.length,
-    total: played.length ? {
-      strokes: played.reduce((s, h) => s + h.s, 0),
-      toPar: played.reduce((s, h) => s + (h.s - h.par), 0),
-    } : null,
-    out: half(hs.slice(0, 9)),
-    in: half(hs.slice(9)),
-    parOut: hs.slice(0, 9).reduce((s, h) => s + h.par, 0),
-    parIn: hs.slice(9).reduce((s, h) => s + h.par, 0),
-
-    gir: hs.some((h) => h.gir != null) ? share(girHoles.length, 18) : null,
-    fw: fwApplicable.some((h) => h.fw != null) ? share(fwHoles.length, fwApplicable.length) : null,
-    putts: puttHoles.length
-      ? { total: puttHoles.reduce((s, h) => s + h.p, 0), holes: puttHoles.length }
-      : null,
-
-    /* Fördjupningens fyra mått. */
-    puttsPerGir: puttsOnGir.length
-      ? { avg: puttsOnGir.reduce((s, h) => s + h.p, 0) / puttsOnGir.length, holes: puttsOnGir.length }
-      : null,
-    girSaved: share(girPlayed.filter((h) => h.s - h.par <= 0).length, girPlayed.length),
-    fwSaved: share(fwPlayed.filter((h) => h.s - h.par <= 0).length, fwPlayed.length),
-    scrambling: hs.some((h) => h.gir != null)
-      ? share(missed.filter((h) => h.s - h.par <= 0).length, missed.length)
-      : null,
-
-    dist,
-  };
-}
 
 /* Exempelsiffror till teckenförklaringen: formen ska synas, inte
    siffran i sig. */
@@ -1975,26 +1894,7 @@ function Scorecard({ scores, playerId, roundId, onPickPlayer, onPickRound, onBac
 function Leaderboard({ scores, me, onOpenCard }) {
   const [view, setView] = useState("all");
 
-  const rows = useMemo(() => {
-    const rs = view === "all" ? ROUNDS : ROUNDS.filter((r) => r.id === view);
-    return PLAYERS.map((p) => {
-      let strokes = 0, toPar = 0, played = 0, birdies = 0;
-      const per = ROUNDS.map((r) => {
-        const st = roundStat(r, scores[r.id][p.id]);
-        return { id: r.id, short: r.short, ...st };
-      });
-      rs.forEach((r) => {
-        const st = per.find((x) => x.id === r.id);
-        strokes += st.strokes; toPar += st.toPar; played += st.played; birdies += st.birdies;
-      });
-      return { ...p, strokes, toPar, played, birdies, per, max: rs.length * 18 };
-    }).sort((a, b) => {
-      if (!a.played && !b.played) return 0;
-      if (!a.played) return 1;
-      if (!b.played) return -1;
-      return a.toPar - b.toPar || b.played - a.played;
-    });
-  }, [scores, view]);
+  const rows = useMemo(() => leaderboardRows(ROUNDS, scores, view), [scores, view]);
 
   const live = rows.some((r) => r.played > 0);
   const lead = live ? rows[0].toPar : 0;
@@ -2136,25 +2036,7 @@ function Row({ r, pos, lead, isMe, showPer, onOpen }) {
    ========================================================= */
 
 function Dream18({ scores, me }) {
-  const rows = useMemo(() => PLAYERS.map((p) => {
-    const best = [];
-    let total = 0, filled = 0;
-    for (let i = 0; i < 18; i++) {
-      let low = null;
-      for (const r of ROUNDS) {
-        const s = scores[r.id][p.id][i]?.s;
-        if (s != null && (low == null || s < low)) low = s;
-      }
-      best.push(low);
-      if (low != null) { total += low; filled++; }
-    }
-    return { ...p, best, total, filled };
-  }).sort((a, b) => {
-    if (!a.filled && !b.filled) return 0;
-    if (!a.filled) return 1;
-    if (!b.filled) return -1;
-    return a.total - b.total;
-  }), [scores]);
+  const rows = useMemo(() => dream18Rows(ROUNDS, scores), [scores]);
 
   const live = rows.some((r) => r.filled > 0);
 
@@ -2198,92 +2080,6 @@ function Dream18({ scores, me }) {
 /* =========================================================
    AWARDS
    ========================================================= */
-
-function computeAwards(rounds, scores, beers) {
-  const stats = PLAYERS.map((p) => {
-    let comeback = -Infinity, diffs = [], clutchSum = 0, clutchN = 0;
-    let gir = 0, fw = 0, putts = 0, puttHoles = 0;
-    let scr = 0, scrOpp = 0, streak = 0, birdies = 0;
-
-    rounds.forEach((r) => {
-      const hs = scores[r.id][p.id].map((h, i) => ({ ...h, par: r.holes[i].par }));
-      const played = hs.filter((h) => h.s != null);
-
-      for (let i = 1; i < hs.length; i++) {
-        const a = hs[i - 1], b = hs[i];
-        if (a.s == null || b.s == null) continue;
-        const sw = (a.s - a.par) - (b.s - b.par);
-        if (sw > comeback) comeback = sw;
-      }
-
-      played.forEach((h) => diffs.push(h.s - h.par));
-
-      if (played.length >= 4) {
-        const last3 = played.slice(-3);
-        const avg = played.reduce((s, h) => s + (h.s - h.par), 0) / played.length;
-        const l3 = last3.reduce((s, h) => s + (h.s - h.par), 0) / 3;
-        clutchSum += avg - l3; clutchN++;
-      }
-
-      gir += hs.filter((h) => h.gir === true).length;
-      fw += hs.filter((h) => h.par !== 3 && h.fw === true).length;
-      const ph = hs.filter((h) => h.p != null);
-      putts += ph.reduce((s, h) => s + h.p, 0);
-      puttHoles += ph.length;
-
-      const opp = hs.filter((h) => h.s != null && h.gir !== true);
-      scrOpp += opp.length;
-      scr += opp.filter((h) => h.s - h.par <= 0).length;
-
-      let run = 0;
-      for (const h of hs) {
-        if (h.s == null) { run = 0; continue; }
-        if (h.s - h.par <= 1) { run++; streak = Math.max(streak, run); } else run = 0;
-      }
-
-      birdies += played.filter((h) => h.s - h.par <= -1).length;
-    });
-
-    /* The Optimizer: trendlinjen genom (ölnivå, snitt över par), viktad
-       med antal hål per nivå. Kräver spel på minst tre olika nivåer. */
-    const levels = beerLevels(rounds, scores, beers, p.id);
-    const slope = weightedSlope(levels);
-
-    let consistency = null;
-    if (diffs.length >= 3) {
-      const m = diffs.reduce((a, b) => a + b, 0) / diffs.length;
-      consistency = Math.sqrt(diffs.reduce((a, b) => a + (b - m) ** 2, 0) / diffs.length);
-    }
-
-    return {
-      p, comeback: comeback === -Infinity ? null : comeback, consistency,
-      clutch: clutchN ? clutchSum / clutchN : null,
-      gir, fw, putts: puttHoles ? putts : null, puttHoles,
-      scr, scrOpp, streak, birdies,
-      optimizer: levels.length >= 3 ? slope : null,
-      beerLevels: levels.length,
-    };
-  });
-
-  const pick = (k, dir = "max", ok = () => true) => {
-    const c = stats.filter((s) => s[k] != null && ok(s));
-    if (!c.length) return null;
-    return c.reduce((b, s) => (!b ? s : dir === "max" ? (s[k] > b[k] ? s : b) : (s[k] < b[k] ? s : b)), null);
-  };
-
-  return {
-    comeback: pick("comeback", "max", (s) => s.comeback > 0),
-    consistency: pick("consistency", "min"),
-    clutch: pick("clutch", "max", (s) => s.clutch > 0),
-    gir: pick("gir", "max", (s) => s.gir > 0),
-    fw: pick("fw", "max", (s) => s.fw > 0),
-    putts: pick("putts", "min", (s) => s.puttHoles >= 3),
-    scr: pick("scr", "max", (s) => s.scr > 0),
-    streak: pick("streak", "max", (s) => s.streak > 0),
-    birdies: pick("birdies", "max", (s) => s.birdies > 0),
-    optimizer: pick("optimizer", "min"),
-  };
-}
 
 const AWARDS = [
   { k: "comeback", t: "Comeback King", i: TrendingUp, d: "Störst förbättring hål till hål", v: (s) => `${s.comeback} slag bättre` },
@@ -2330,14 +2126,18 @@ function Awards({ scores, beers }) {
                 <div style={{ fontWeight: 800, fontSize: 13.5, color: w ? C.ink : C.mutedGreen }}>{a.t}</div>
                 <div style={{ fontSize: 11, color: w ? C.muted : C.dim, marginTop: 1 }}>{a.d}</div>
               </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ textAlign: "right", flexShrink: 0, maxWidth: 132 }}>
                 {w ? (
                   <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: w.p.color }} />
-                      <span style={{ fontWeight: 800, fontSize: 12.5, color: C.ink }}>{w.p.name}</span>
+                    {(w.winners || [w.p]).map((p) => (
+                      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+                        <span style={{ fontWeight: 800, fontSize: 12.5, color: C.ink }}>{p.name}</span>
+                      </div>
+                    ))}
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: C.muted, marginTop: 3 }}>
+                      {(w.winners || [w.p]).length > 1 ? `delad · ${a.v(w)}` : a.v(w)}
                     </div>
-                    <div style={{ fontFamily: MONO, fontSize: 10, color: C.muted, marginTop: 2 }}>{a.v(w)}</div>
                   </>
                 ) : <span style={{ fontSize: 11.5, color: C.dim }}>—</span>}
               </div>
@@ -2644,6 +2444,73 @@ function BeerChart({ curves }) {
 /* =========================================================
    UPPDATERINGSNOTIS
    ========================================================= */
+
+/* =========================================================
+   SEED-PANEL — bara i utvecklingsläge
+
+   Renderas bakom `import.meta.env.DEV`, så Vite tree-shakar bort
+   den ur produktionsbygget. Den skriver genom useScores vanliga kö,
+   vilket gör att synken, offlinekön och realtidslyssnarna testas
+   samtidigt som vyerna fylls med data.
+   ========================================================= */
+
+function DevSeed({ onSeed }) {
+  const [open, setOpen] = useState(false);
+
+  const knapp = {
+    display: "block", width: "100%", padding: "9px 0", marginTop: 7, cursor: "pointer",
+    borderRadius: 9, border: "none", fontSize: 11.5, fontWeight: 700,
+  };
+
+  return (
+    <div style={{ position: "fixed", left: 12, bottom: 12, zIndex: 40 }}>
+      {!open && (
+        <button onClick={() => setOpen(true)} title="Seed-läge (endast dev)" style={{
+          width: 34, height: 34, borderRadius: "50%", cursor: "pointer",
+          border: `1px solid ${C.line}`, background: "rgba(10,42,33,0.85)",
+          color: C.mutedGreen, fontSize: 14, fontWeight: 800,
+        }}>⚙</button>
+      )}
+
+      {open && (
+        <div style={{
+          width: 190, padding: "11px 12px 12px", borderRadius: 12,
+          background: C.fairwayDark, border: `1px solid ${C.line}`,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            fontSize: 9.5, fontWeight: 800, color: C.gold,
+            textTransform: "uppercase", letterSpacing: "0.14em",
+          }}>
+            Seed · dev
+            <button onClick={() => setOpen(false)} style={{
+              background: "none", border: "none", color: C.mutedGreen, cursor: "pointer", padding: 0,
+            }}><X size={13} /></button>
+          </div>
+
+          <div style={{ fontSize: 10.5, color: C.dim, lineHeight: 1.5, marginTop: 6 }}>
+            Skriver till samma databas som appen. Rensa efteråt, eller
+            använd Nollställ under Schema.
+          </div>
+
+          <button
+            onClick={() => { const { scores, beers } = buildSeed(); onSeed(scores, beers); }}
+            style={{ ...knapp, background: C.goldBright, color: C.fairwayDark }}
+          >
+            Fyll med testdata
+          </button>
+          <button
+            onClick={() => { const { scores, beers } = buildEmpty(); onSeed(scores, beers); }}
+            style={{ ...knapp, background: "rgba(255,255,255,0.07)", color: C.mutedGreen }}
+          >
+            Rensa seed
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UpdateBanner({ ready, update, dismiss }) {
   if (!ready) return null;

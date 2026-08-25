@@ -212,6 +212,22 @@ export function useScores() {
     writeBeers(rid, pid, cur.slice(0, -1));
   }, [writeBeers]);
 
+  /* ---------- seed (bara utvecklingsläge) ----------
+
+     Skriver hela uppsättningen genom samma kö som vanlig inmatning:
+     optimistisk uppdatering, cache, debounce och offlinekö. Poängen
+     är att seed-körningen testar synken på riktigt, inte bara
+     gränssnittet. */
+  const seedAll = useCallback((nextScores, nextBeers) => {
+    scoresRef.current = nextScores;
+    beersRef.current = nextBeers;
+    setScores(nextScores);
+    setBeers(nextBeers);
+    write(CACHE_KEY, nextScores);
+    write(BEER_KEY, nextBeers);
+    for (const r of ROUNDS) for (const p of PLAYERS) touch(r.id, p.id);
+  }, [touch]);
+
   /* ---------- nollställning ---------- */
 
   /* Skriver tomma hål för alla fyra spelare i alla tre rundor som en enda
@@ -351,7 +367,7 @@ export function useScores() {
     };
   }, [flush, queueSize]);
 
-  return { scores, beers, set, addBeer, undoBeer, sync, reset };
+  return { scores, beers, set, addBeer, undoBeer, sync, reset, seedAll };
 }
 
 /* =========================================================

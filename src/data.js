@@ -397,7 +397,7 @@ export const EDITION_2025 = {
   awards: {
     comeback:    { ids: ["per", "jonsson", "johansson"], v: "4 slag bättre" },
     consistency: { ids: ["lars"], v: "±0,87" },
-    clutch:      { ids: ["lars"], v: "0,17 bättre sista 3" },
+    clutch:      { ids: ["johansson"], v: "0,11 bättre sista 3" },
     streak:      { ids: ["per"], v: "16 hål" },
     birdies:     { ids: ["lars"], v: "4 st" },
   },
