@@ -215,10 +215,8 @@ efter sitt eget, utan att gå tillbaka.
 ### Rutnätet
 
 Två block om nio hål med raderna Hål, Index, Par, Res, GIR, Fway och
-Puttar. Resultatrutorna är fyllda i samma skala som snabbknapparna på
-Spela (`scoreChip`): guld för eagle, grönt för birdie, papper för par,
-lera för bogey, mörkröd för dubbel eller sämre. Fairway visar `—` på
-par 3, inte tom ruta — annars ser det ut som ett glömt värde.
+Puttar. Resultatrutorna ritas av `ScoreBox` och hämtar färg och form
+från `SCORE` — se avsnittet om scoreskalan ovan.
 
 **Mobilanpassningen ligger i uppdelningen på två nio-hålsblock**, inte
 i sidoscroll eller hopfällda rader. Elva kolumner (etikett + 9 hål +
@@ -226,18 +224,51 @@ summa) ger ungefär 25 px per hålruta vid 360 px, vilket räcker för två
 siffror i 11–12 px mono. Blir raderna fler eller kolumnerna bredare är
 det den marginalen som äts upp först.
 
-Rader utan underlag ritas inte alls: har ingen fyllt i GIR den rundan
-försvinner både GIR-raden i rutnätet och alla GIR-beroende värden i
-sammanställningen. Samma sak för fairway och puttar.
+### Tomma värden
+
+**Alla sju raderna ritas alltid, på båda blocken, oavsett om något är
+ifyllt.** Ett hål utan värde får `–`, och saknas hela raden i ett
+block får summakolumnen `–` med. Det gäller även en helt orörd runda:
+då står det streck rakt igenom.
+
+Poängen är att streck och frånvaro betyder olika saker. Ett streck
+säger "ingen har fyllt i det här"; en rad som inte finns skulle säga
+"måttet finns inte". Dölj därför aldrig en rad för att den är tom.
+
+Undantaget är fairway på par 3, som visar `—` eftersom måttet inte är
+tillämpligt där.
+
+Samma regel gäller sammanställningen: varje rad visas alltid, med `–`
+som värde när underlaget saknas. Därför returnerar `cardStats` `null`
+i stället för 0 för allt som kan sakna underlag — noll greenträffar
+och "ingen har fyllt i green" är inte samma sak, och 0 skulle ljuga.
 
 ### Sammanställningen
 
-`cardStats(round, holes)` räknar allt: Ut/In/totalt, GIR, fairway
-(par 3 räknas inte), puttar, puttar per träffad green, scrambling,
-scoringfördelning, bästa och sämsta hål, samt snitt över par på de nio
-hålen med lägst hålindex mot de nio med högst. Allt brutto — ingen
-nettorad, ingen öl, inga awards. Hål utan inrapporterat slag räknas
-inte alls, varken i par-summan eller i snitten.
+Tre block i den här ordningen, allt räknat av `cardStats(round, holes)`:
+
+**Grunddata** — Score med över/under par, Ut och In var för sig, GIR
+(antal av 18 och procent), fairwayträffar (av tillämpliga hål, par 3
+räknas inte) och puttar (totalt och snitt per hål).
+
+**Scoringfördelning** — `DistBar`: en vågrät stapel där varje segments
+bredd är antalet hål och antalet står inuti segmentet. Färg och form
+kommer från samma `SCORE`-skala som resultatraden, så det syns att det
+är samma information sammanfattad. Teckenförklaringen visar alla fem
+band, även de med noll, nedtonade.
+
+**Fördjupning** — fyra mått, varken fler eller färre:
+
+| Mått | Mäter |
+|---|---|
+| Puttar per träffad green | putting skilt från järnspel |
+| Par eller bättre vid GIR | om chansen tas till vara |
+| Par eller bättre vid fairwayträff | samma sak utifrån utslaget |
+| Räddade par | kortspelet på missade greener |
+
+Allt brutto — ingen nettorad, ingen öl, inga awards. Hål utan
+inrapporterat slag räknas inte alls, varken i par-summan eller i
+snitten.
 
 ## Datamodell i Firestore
 
